@@ -1,4 +1,6 @@
-import data.Message;
+package encryptor;
+
+import dto.Message;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import utils.CryptoUtils;
@@ -8,8 +10,8 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class MessageEncoderTest {
-    private final MessageEncoder encoder = new MessageEncoder();
+public class MessageEncryptorTest {
+    private final MessageEncryptor encoder = new MessageEncryptor();
 
     private final static int seed = 12345;
     private static Random random;
@@ -38,7 +40,7 @@ public class MessageEncoderTest {
     }
 
     @Test
-    public void shouldEncodeCorrectly() {
+    public void shouldEncryptCorrectly() {
         Message message = new Message(
                 (byte) 1,
                 12345L,
@@ -47,7 +49,7 @@ public class MessageEncoderTest {
                 "Hello world!"
         );
 
-        byte[] actual = encoder.encode(message);
+        byte[] actual = encoder.encrypt(message);
 
         byte[] expected = {0x13, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0x00, 0x00, 0x00, 0x18,
                 (byte) 0xAD, (byte) 0x89, 0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x03, (byte) 0xE7, (byte) 0xCE,
@@ -61,7 +63,7 @@ public class MessageEncoderTest {
     {
         for(int i = 0; i < 5; i++){
             Message message = createRandomMessage();
-            byte[] encoded = encoder.encode(message);
+            byte[] encoded = encoder.encrypt(message);
             assertEquals(0x13, encoded[0]);
         }
     }
@@ -76,7 +78,7 @@ public class MessageEncoderTest {
                 ""
         );
 
-        byte[] encoded = encoder.encode(message);
+        byte[] encoded = encoder.encrypt(message);
         ByteBuffer buffer = ByteBuffer.wrap(encoded);
 
         assertEquals(24, buffer.getInt(10)); // Мінімум 16 байт на текст + 8 на commandId та userId
@@ -98,7 +100,7 @@ public class MessageEncoderTest {
                 "Hello world!"
         );
 
-        byte[] encoded = encoder.encode(message);
+        byte[] encoded = encoder.encrypt(message);
         ByteBuffer buffer = ByteBuffer.wrap(encoded);
 
         buffer.position(14);
@@ -113,7 +115,7 @@ public class MessageEncoderTest {
         Message message = createRandomMessage();
         message.setData(generateRandomString(100_000_000));
 
-        byte[] encoded = encoder.encode(message);
+        byte[] encoded = encoder.encrypt(message);
     }
 
     @Test
@@ -122,7 +124,7 @@ public class MessageEncoderTest {
         String data = "Кирилиця_ґ_🎶";
         message.setData(data);
 
-        byte[] encoded = encoder.encode(message);
+        byte[] encoded = encoder.encrypt(message);
         ByteBuffer buffer = ByteBuffer.wrap(encoded);
 
         buffer.position(10);

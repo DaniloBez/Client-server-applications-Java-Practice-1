@@ -1,15 +1,18 @@
-import data.Message;
+package encryptor;
+
+import dto.Message;
 import exception.EncryptionException;
 import utils.Crc16;
 import utils.CryptoUtils;
 
 import java.nio.ByteBuffer;
 
-public class MessageEncoder {
+public class MessageEncryptor implements IEncryptor {
     private static final byte MAGIC_BYTE = 0x13;
     private static final byte HEADER_LENGTH = 14;
 
-    public byte[] encode(Message message){
+    @Override
+    public byte[] encrypt(Message message) throws EncryptionException {
         byte[] rawData = message.getData().getBytes();
         byte[] encryptedData;
 

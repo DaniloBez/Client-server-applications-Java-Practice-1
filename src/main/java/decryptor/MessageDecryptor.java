@@ -1,4 +1,6 @@
-import data.Message;
+package decryptor;
+
+import dto.Message;
 import exception.DecryptionException;
 import utils.Crc16;
 import utils.CryptoUtils;
@@ -6,11 +8,11 @@ import utils.CryptoUtils;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-public class MessageDecoder {
+public class MessageDecryptor implements IDecryptor {
     private static final byte MAGIC_BYTE = 0x13;
     private static final byte HEADER_LENGTH = 14;
 
-    public Message decode(byte[] data) throws DecryptionException {
+    public Message decrypt(byte[] data) throws DecryptionException {
         if (data == null || data.length < HEADER_LENGTH + 2 + 4 + 4 + 2)
             throw new DecryptionException("Message too short or null");
 

@@ -1,4 +1,7 @@
-import data.Message;
+package dectyptor;
+
+import dto.Message;
+import decryptor.MessageDecryptor;
 import exception.DecryptionException;
 import org.junit.jupiter.api.Test;
 import utils.Crc16;
@@ -9,9 +12,9 @@ import java.util.Arrays;
 import static org.assertj.core.api.AssertionsForClassTypes.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class MessageDecoderTest {
+public class MessageDecryptorTest {
 
-    MessageDecoder decoder = new MessageDecoder();
+    MessageDecryptor decoder = new MessageDecryptor();
 
     @Test
     public void shouldDecodeCorrectly() {
@@ -28,7 +31,7 @@ public class MessageDecoderTest {
                 "Hello world!"
         );
 
-        Message actual = decoder.decode(encodedData);
+        Message actual = decoder.decrypt(encodedData);
 
         assertEquals(expected, actual);
     }
@@ -36,10 +39,10 @@ public class MessageDecoderTest {
     @Test
     public void badDataTest()
     {
-        assertThatThrownBy(() -> decoder.decode(null))
+        assertThatThrownBy(() -> decoder.decrypt(null))
                 .isInstanceOf(DecryptionException.class).hasMessage("Message too short or null");
 
-        assertThatThrownBy(() -> decoder.decode(new byte[0]))
+        assertThatThrownBy(() -> decoder.decrypt(new byte[0]))
                 .isInstanceOf(DecryptionException.class).hasMessage("Message too short or null");
     }
 
@@ -51,7 +54,7 @@ public class MessageDecoderTest {
                 0x63, (byte) 0x9C, (byte) 0xD0, (byte) 0xE3, 0x35, (byte) 0xF0, (byte) 0xC3, 0x75, 0x4A, 0x02,
                 0x2D, (byte) 0xB4, 0x5B, (byte) 0x98, 0x72, (byte) 0xC4, (byte) 0xE0};
 
-        assertThatThrownBy(() -> decoder.decode(encodedData))
+        assertThatThrownBy(() -> decoder.decrypt(encodedData))
                 .isInstanceOf(DecryptionException.class).message().startsWith("Invalid magic byte: ");
     }
 
@@ -63,7 +66,7 @@ public class MessageDecoderTest {
                 0x63, (byte) 0x9C, (byte) 0xD0, (byte) 0xE3, 0x35, (byte) 0xF0, (byte) 0xC3, 0x75, 0x4A, 0x02,
                 0x2D, (byte) 0xB4, 0x5B, (byte) 0x98, 0x72, (byte) 0xC4, (byte) 0xE0};
 
-        assertThatThrownBy(() -> decoder.decode(encodedData))
+        assertThatThrownBy(() -> decoder.decrypt(encodedData))
                 .isInstanceOf(DecryptionException.class).hasMessage("Header CRC mismatch");
 
 
@@ -72,7 +75,7 @@ public class MessageDecoderTest {
                 0x63, (byte) 0x9C, (byte) 0xD0, (byte) 0xE3, 0x35, (byte) 0xF9, (byte) 0xC3, 0x75, 0x4A, 0x02,
                 0x2D, (byte) 0xB4, 0x5B, (byte) 0x98, 0x72, (byte) 0xC4, (byte) 0xE0};
 
-        assertThatThrownBy(() -> decoder.decode(encodedData2))
+        assertThatThrownBy(() -> decoder.decrypt(encodedData2))
                 .isInstanceOf(DecryptionException.class).hasMessage("Payload CRC mismatch");
     }
 
@@ -85,7 +88,7 @@ public class MessageDecoderTest {
 
         byte[] truncated = Arrays.copyOf(encodedData, encodedData.length - 5); // Імітуємо втрату даних
 
-        assertThatThrownBy(() -> decoder.decode(truncated))
+        assertThatThrownBy(() -> decoder.decrypt(truncated))
                 .isInstanceOf(DecryptionException.class).hasMessage("Declared data length exceeds actual buffer size");
 
     }
@@ -109,7 +112,7 @@ public class MessageDecoderTest {
         ByteBuffer buffer = ByteBuffer.wrap(encodedData);
         buffer.putShort(encodedData.length - 2, newCrc);
 
-        assertThatThrownBy(() -> decoder.decode(encodedData))
+        assertThatThrownBy(() -> decoder.decrypt(encodedData))
                 .isInstanceOf(DecryptionException.class).hasMessage("Given final block not properly padded. Such issues can arise if a bad key is used during decryption.");
     }
 }
