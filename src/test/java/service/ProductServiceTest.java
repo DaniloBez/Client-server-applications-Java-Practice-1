@@ -12,6 +12,7 @@ import repository.ProductCategoryRepository;
 import repository.ProductRepository;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -102,5 +103,35 @@ public class ProductServiceTest {
 
         assertTrue(exception.getMessage().contains("There are not enough items in stock"));
         assertEquals(100, testProduct.getCountInStock().get());
+    }
+
+    @Test
+    public void shouldGetProductsByCategorySuccessfully() {
+        int categoryId = 1;
+        when(categoryRepository.get(categoryId)).thenReturn(new ProductCategory("Test Category"));
+        when(productRepository.getAllByCategoryId(categoryId)).thenReturn(List.of(testProduct));
+
+        List<Product> products = productService.getProductsByCategory(categoryId);
+
+        assertNotNull(products);
+        assertEquals(1, products.size());
+        assertEquals(testProduct.getId(), products.getFirst().getId());
+
+        verify(categoryRepository, times(1)).get(categoryId);
+        verify(productRepository, times(1)).getAllByCategoryId(categoryId);
+    }
+
+    @Test
+    public void shouldThrowExceptionWhenGettingProductsForNonExistentCategory() {
+        int categoryId = 99;
+        when(categoryRepository.get(categoryId)).thenReturn(null);
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> productService.getProductsByCategory(categoryId));
+
+        assertTrue(exception.getMessage().contains("the group with ID 99 does not exist"));
+
+        verify(categoryRepository, times(1)).get(categoryId);
+        verify(productRepository, never()).getAllByCategoryId(anyInt());
     }
 }
