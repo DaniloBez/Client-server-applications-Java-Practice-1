@@ -44,4 +44,13 @@ public class ProductCategoryRepositoryTest {
         assertNull(productCategoryRepository.get(id));
         assertNull(productCategoryRepository.delete(id));
     }
+
+    @Test
+    public void shouldGetAll() {
+        productCategoryRepository.create("Category1");
+        productCategoryRepository.create("Category2");
+        productCategoryRepository.create("Category3");
+
+        assertEquals(3, productCategoryRepository.getAll().size());
+    }
 }
