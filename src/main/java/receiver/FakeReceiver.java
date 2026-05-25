@@ -35,6 +35,13 @@ public class FakeReceiver implements IReceiver {
 
     @Override
     public byte[] receiveMessage() {
+        try {
+            Thread.sleep(500 + random.nextInt(1000));
+        }
+        catch (InterruptedException e) {
+            logger.error("Received interrupt while waiting for message.");
+        }
+
         Message msg = messagePool.get(random.nextInt(messagePool.size()));
         logger.info("Receiving message: {}", msg);
         return clientEncryptor.encrypt(msg);

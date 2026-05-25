@@ -1,14 +1,12 @@
 package dto;
 
-import lombok.AllArgsConstructor;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 @Getter
 @Setter
 @AllArgsConstructor
 @EqualsAndHashCode
+@ToString
 public class Message {
     private byte clientApplicationId;
 

@@ -1,0 +1,54 @@
+package encryptor;
+
+import dto.Message;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import utils.ServerSignals;
+
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class EncryptorNode implements Runnable {
+    private final static Logger logger = LoggerFactory.getLogger(EncryptorNode.class);
+
+    private final BlockingQueue<Message> inputQueue;
+    private final BlockingQueue<byte[]> outputQueue;
+    private final MessageEncryptor messageEncryptor;
+    private final AtomicInteger activeEncryptorsCounter;
+
+    public EncryptorNode(BlockingQueue<Message> inputQueue, BlockingQueue<byte[]> outputQueue, MessageEncryptor messageEncryptor,  AtomicInteger activeEncryptorsCounter) {
+        this.inputQueue = inputQueue;
+        this.outputQueue = outputQueue;
+        this.messageEncryptor = messageEncryptor;
+        this.activeEncryptorsCounter = activeEncryptorsCounter;
+    }
+
+    @Override
+    public void run() {
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                Message msg = inputQueue.take();
+
+                if (msg == ServerSignals.POISON_PILL_MSG) {
+                    logger.info("EncryptorNode thread {} stopped", Thread.currentThread().getName());
+
+                    if (activeEncryptorsCounter.decrementAndGet() == 0) {
+                        logger.info("The last encryptor has finished its work. Passing the poison pill to the Senders.");
+                        outputQueue.put(ServerSignals.POISON_PILL_BYTES);
+                    }
+                    else
+                        inputQueue.put(ServerSignals.POISON_PILL_MSG);
+
+                    break;
+                }
+
+                byte[] encryptedMsg = messageEncryptor.encrypt(msg);
+                outputQueue.put(encryptedMsg);
+            }
+        }
+        catch (InterruptedException e) {
+            logger.error("EncryptorNode thread {} has been interrupted: {}", Thread.currentThread().getName() , e.getMessage());
+            Thread.currentThread().interrupt();
+        }
+    }
+}
