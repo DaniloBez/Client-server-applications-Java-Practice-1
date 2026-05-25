@@ -2,24 +2,18 @@ package server;
 
 import decryptor.DecryptorNode;
 import decryptor.IDecryptor;
-import decryptor.MessageDecryptor;
 import dto.Message;
 import encryptor.EncryptorNode;
+import encryptor.IEncryptor;
 import encryptor.MessageEncryptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import processor.IProcessor;
-import processor.Processor;
 import processor.ProcessorNode;
-import receiver.FakeReceiver;
+import receiver.IReceiver;
 import receiver.ReceiverNode;
-import repository.ProductCategoryRepository;
-import repository.ProductRepository;
-import sender.FakeSender;
 import sender.ISender;
 import sender.SenderNode;
-import service.ProductCategoryService;
-import service.ProductService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,30 +34,36 @@ public class Server {
     private final ExecutorService executorService;
     private final List<ReceiverNode> receiverNodes = new ArrayList<>();
 
-    public Server() {
+    private final IProcessor processor;
+    private final IDecryptor decryptor;
+    private final IEncryptor encryptor;
+    private final ISender sender;
+    private final IReceiver receiver;
+
+
+    public Server(
+            IReceiver receiver,
+            ISender sender,
+            IDecryptor decryptor,
+            MessageEncryptor encryptor,
+            IProcessor processor
+    ) {
         this.executorService = Executors.newFixedThreadPool(16);
+
+        this.receiver = receiver;
+        this.sender = sender;
+        this.decryptor = decryptor;
+        this.encryptor = encryptor;
+        this.processor = processor;
     }
 
     public void start() {
-        logger.info("Initializing server components...");
-
-        ProductCategoryRepository categoryRepository = new ProductCategoryRepository();
-        ProductRepository productRepository = new ProductRepository();
-
-        ProductCategoryService categoryService = new ProductCategoryService(categoryRepository, productRepository);
-        ProductService productService = new ProductService(productRepository, categoryRepository);
-
-        IProcessor processor = new Processor(productService, categoryService);
-        IDecryptor decryptor = new MessageDecryptor();
-        MessageEncryptor encryptor = new MessageEncryptor();
-        ISender sender = new FakeSender();
-
         logger.info("Launching threads (Scale up)...");
 
         int receiverCount = 2;
         AtomicInteger activeReceivers = new AtomicInteger(receiverCount);
         for (int i = 0; i < receiverCount; i++) {
-            ReceiverNode receiverNode = new ReceiverNode(rawInputQueue, new FakeReceiver(), activeReceivers);
+            ReceiverNode receiverNode = new ReceiverNode(rawInputQueue, receiver, activeReceivers);
             receiverNodes.add(receiverNode);
             executorService.submit(receiverNode);
         }

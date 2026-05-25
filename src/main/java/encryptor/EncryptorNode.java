@@ -13,13 +13,13 @@ public class EncryptorNode implements Runnable {
 
     private final BlockingQueue<Message> inputQueue;
     private final BlockingQueue<byte[]> outputQueue;
-    private final MessageEncryptor messageEncryptor;
+    private final IEncryptor encryptor;
     private final AtomicInteger activeEncryptorsCounter;
 
-    public EncryptorNode(BlockingQueue<Message> inputQueue, BlockingQueue<byte[]> outputQueue, MessageEncryptor messageEncryptor,  AtomicInteger activeEncryptorsCounter) {
+    public EncryptorNode(BlockingQueue<Message> inputQueue, BlockingQueue<byte[]> outputQueue, IEncryptor encryptor,  AtomicInteger activeEncryptorsCounter) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
-        this.messageEncryptor = messageEncryptor;
+        this.encryptor = encryptor;
         this.activeEncryptorsCounter = activeEncryptorsCounter;
     }
 
@@ -42,7 +42,7 @@ public class EncryptorNode implements Runnable {
                     break;
                 }
 
-                byte[] encryptedMsg = messageEncryptor.encrypt(msg);
+                byte[] encryptedMsg = encryptor.encrypt(msg);
                 outputQueue.put(encryptedMsg);
             }
         }
