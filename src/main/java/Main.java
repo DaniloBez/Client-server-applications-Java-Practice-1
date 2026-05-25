@@ -50,10 +50,15 @@ public class Main {
 
         return new Server(
                 prodReceiver,
+                2,
                 prodSender,
+                5,
                 serverDecryptor,
+                2,
                 serverEncryptor,
-                serverProcessor
+                3,
+                serverProcessor,
+                4
         );
     }
 }
