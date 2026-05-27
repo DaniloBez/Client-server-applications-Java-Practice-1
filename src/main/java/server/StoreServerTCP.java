@@ -36,7 +36,7 @@ public class StoreServerTCP implements Runnable {
     @Override
     public void run() {
         try {
-            serverSocket = new ServerSocket(port);
+            serverSocket = new ServerSocket(port, 1000);
             logger.info("Store Server TCP listening on port {}", port);
 
             while (isRunning.get() && !serverSocket.isClosed()) {

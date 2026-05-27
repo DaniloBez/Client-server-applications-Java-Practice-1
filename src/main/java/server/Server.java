@@ -33,7 +33,8 @@ public class Server {
     private final ExecutorService executorService;
     private final ConnectionManager connectionManager = new ConnectionManager();
 
-    private final int tcpPort;
+    private final int port;
+
     private AtomicBoolean isTCPServerRun = new AtomicBoolean(false);;
     private StoreServerTCP tcpServer;
 
@@ -54,9 +55,9 @@ public class Server {
             int encryptorCount,
             IProcessor processor,
             int processorCount,
-            int tcpPort
+            int port
     ) {
-        validate(senderCount, decryptorCount, encryptorCount, processorCount, tcpPort);
+        validate(senderCount, decryptorCount, encryptorCount, processorCount, port);
 
         this.senderCount = senderCount;
         this.decryptor = decryptor;
@@ -66,7 +67,7 @@ public class Server {
         this.processor = processor;
         this.processorCount = processorCount;
 
-        this.tcpPort = tcpPort;
+        this.port = port;
 
         this.executorService = Executors.newFixedThreadPool(1 + senderCount + decryptorCount + encryptorCount + processorCount);
     }
@@ -76,7 +77,7 @@ public class Server {
             int decryptorCount,
             int encryptorCount,
             int processorCount,
-            int tcpPort
+            int port
     ) throws IllegalArgumentException {
         if (senderCount <= 0)
             throw new IllegalArgumentException("Sender count must be greater than 0");
@@ -87,14 +88,14 @@ public class Server {
         if (encryptorCount <= 0)
             throw new IllegalArgumentException("TCP port must be greater than 0");
 
-        if (tcpPort <= 1000)
+        if (port <= 1000)
             throw new IllegalArgumentException("TCP port must be greater than 1000");
     }
 
     public void start() {
         logger.info("Starting TCP Server");
         this.isTCPServerRun = new AtomicBoolean(true);
-        this.tcpServer = new StoreServerTCP(tcpPort, connectionManager, isTCPServerRun, rawInputQueue);
+        this.tcpServer = new StoreServerTCP(port, connectionManager, isTCPServerRun, rawInputQueue);
         executorService.execute(tcpServer);
 
         logger.info("Launching threads (Scale up)...");

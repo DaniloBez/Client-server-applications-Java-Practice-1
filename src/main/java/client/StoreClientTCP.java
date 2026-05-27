@@ -47,6 +47,16 @@ public class StoreClientTCP {
         }
     }
 
+    public void disconnect() {
+        this.isConnected = false;
+        try {
+            if (socket != null && !socket.isClosed())
+                socket.close();
+        } catch (IOException e) {
+            logger.error("Error while closing client socket", e);
+        }
+    }
+
     private void listenForServerMessages() {
         try {
             while (isConnected && !Thread.currentThread().isInterrupted()) {

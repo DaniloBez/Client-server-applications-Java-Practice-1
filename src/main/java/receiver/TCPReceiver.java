@@ -39,13 +39,17 @@ public class TCPReceiver implements Runnable {
         } catch (IOException e) {
             String errorMessage = e.getMessage();
 
-            if (errorMessage != null && (errorMessage.contains("Socket closed") || errorMessage.contains("Connection reset")))
-                logger.info("TCP client {} disconnected gracefully ({})", connectionId, errorMessage);
-            else
-                logger.error("TCP client {} unexpected error: {}", connectionId, errorMessage);
+            if (e instanceof java.io.EOFException ||
+                    (errorMessage != null && (errorMessage.contains("Socket closed") || errorMessage.contains("Connection reset")))) {
+
+                logger.info("TCP client {} disconnected gracefully (Connection terminated)", connectionId);
+
+            } else {
+                logger.error("TCP client {} unexpected error: {}", connectionId, e.toString());
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.error("TCP client {} thread error: {}.", connectionId, e.getMessage());
+            logger.error("TCP client {} thread error:", connectionId, e);
         }
         finally {
             connectionManager.removeConnection(connectionId);
