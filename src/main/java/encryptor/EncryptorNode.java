@@ -1,22 +1,24 @@
 package encryptor;
 
 import dto.Message;
+import dto.NetworkMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import utils.ServerSignals;
 
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class EncryptorNode implements Runnable {
     private final static Logger logger = LoggerFactory.getLogger(EncryptorNode.class);
 
-    private final BlockingQueue<Message> inputQueue;
-    private final BlockingQueue<byte[]> outputQueue;
+    private final BlockingQueue<NetworkMessage<Message>> inputQueue;
+    private final BlockingQueue<NetworkMessage<byte[]>> outputQueue;
     private final IEncryptor encryptor;
     private final AtomicInteger activeEncryptorsCounter;
 
-    public EncryptorNode(BlockingQueue<Message> inputQueue, BlockingQueue<byte[]> outputQueue, IEncryptor encryptor,  AtomicInteger activeEncryptorsCounter) {
+    public EncryptorNode(BlockingQueue<NetworkMessage<Message>> inputQueue, BlockingQueue<NetworkMessage<byte[]>> outputQueue, IEncryptor encryptor,  AtomicInteger activeEncryptorsCounter) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
         this.encryptor = encryptor;
@@ -27,9 +29,9 @@ public class EncryptorNode implements Runnable {
     public void run() {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                Message msg = inputQueue.take();
+                NetworkMessage<Message> message = inputQueue.take();
 
-                if (msg == ServerSignals.POISON_PILL_MSG) {
+                if (message == ServerSignals.POISON_PILL_MSG) {
                     logger.info("EncryptorNode thread {} stopped", Thread.currentThread().getName());
 
                     if (activeEncryptorsCounter.decrementAndGet() == 0) {
@@ -42,7 +44,10 @@ public class EncryptorNode implements Runnable {
                     break;
                 }
 
-                byte[] encryptedMsg = encryptor.encrypt(msg);
+                NetworkMessage<byte[]> encryptedMsg = new NetworkMessage<>(
+                        message.connectionId(),
+                        encryptor.encrypt(message.data())
+                );
                 outputQueue.put(encryptedMsg);
             }
         }

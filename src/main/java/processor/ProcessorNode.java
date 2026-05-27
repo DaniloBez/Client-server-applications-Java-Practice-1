@@ -1,6 +1,7 @@
 package processor;
 
 import dto.Message;
+import dto.NetworkMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import utils.ServerSignals;
@@ -11,12 +12,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ProcessorNode implements Runnable {
     private final static Logger logger = LoggerFactory.getLogger(ProcessorNode.class);
 
-    private final BlockingQueue<Message> inputQueue;
-    private final BlockingQueue<Message> outputQueue;
+    private final BlockingQueue<NetworkMessage<Message>> inputQueue;
+    private final BlockingQueue<NetworkMessage<Message>> outputQueue;
     private final IProcessor processor;
     private final AtomicInteger activeProcessorsCounter;
 
-    public ProcessorNode(BlockingQueue<Message> inputQueue, BlockingQueue<Message> outputQueue, IProcessor processor,  AtomicInteger activeProcessorsCounter) {
+    public ProcessorNode(BlockingQueue<NetworkMessage<Message>> inputQueue, BlockingQueue<NetworkMessage<Message>> outputQueue, IProcessor processor,  AtomicInteger activeProcessorsCounter) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
         this.processor = processor;
@@ -27,7 +28,7 @@ public class ProcessorNode implements Runnable {
     public void run() {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                Message inputMessage = inputQueue.take();
+                NetworkMessage<Message> inputMessage = inputQueue.take();
 
                 if (inputMessage == ServerSignals.POISON_PILL_MSG) {
                     logger.info("ProcessorNode thread {} stopped", Thread.currentThread().getName());
@@ -42,7 +43,14 @@ public class ProcessorNode implements Runnable {
                     break;
                 }
 
-                Message outputMessage = processor.process(inputMessage);
+                Message message = processor.process(inputMessage.data());
+
+                NetworkMessage<Message> outputMessage;
+                if (message.getUserId() == Processor.BROADCAST_USER_ID)
+                    outputMessage = new NetworkMessage<>("BROADCAST", message);
+                else
+                    outputMessage = new NetworkMessage<>(inputMessage.connectionId(), message);
+
                 outputQueue.put(outputMessage);
             }
         }

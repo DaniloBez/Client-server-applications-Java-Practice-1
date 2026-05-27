@@ -17,6 +17,8 @@ public class Processor implements IProcessor {
     private final ProductService productService;
     private final ProductCategoryService categoryService;
 
+    public static final int BROADCAST_USER_ID = -1;
+
     public Processor(ProductService productService, ProductCategoryService categoryService) {
         this.productService = productService;
         this.categoryService = categoryService;
@@ -55,7 +57,7 @@ public class Processor implements IProcessor {
         } catch (IllegalArgumentException | IllegalStateException e) {
             return buildErrorMessage(message, 400, "Bad Request", e.getMessage());
         } catch (Exception e) {
-            return buildErrorMessage(message, 500, "Internal Server Error", "An unexpected error occurred");
+            return buildErrorMessage(message, 500, "Internal Server Error", e.getMessage());
         }
     }
 

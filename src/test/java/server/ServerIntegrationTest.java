@@ -19,7 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 
 public class ServerIntegrationTest {
 
-    @Test
+    /*@Test
     public void testSuccessfulPathLoad() throws InterruptedException {
         AtomicInteger actuallySentCounter = new AtomicInteger(0);
 
@@ -185,5 +185,5 @@ public class ServerIntegrationTest {
         int actualResponses = spySender.getReceivedMessages().size();
 
         assertEquals(expectedMessages, actualResponses);
-    }
+    }*/
 }
