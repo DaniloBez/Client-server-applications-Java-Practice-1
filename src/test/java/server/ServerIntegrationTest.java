@@ -8,6 +8,7 @@ import decryptor.MessageDecryptor;
 import dto.Message;
 import dto.request.DeductStockRequest;
 import encryptor.MessageEncryptor;
+import org.assertj.core.api.Assert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import processor.IProcessor;
@@ -410,5 +411,47 @@ public class ServerIntegrationTest {
             org.junit.jupiter.api.Assertions.assertTrue(serverSurvived, "The server froze after the connections were lost!");
             assertEquals(totalClients - clientsToKill, successfulSecondWave.get());
         }
+    }
+
+    @Test
+    void testTCPClientReconnectAndOfflineQueue() throws InterruptedException {
+        CountDownLatch firstMessageLatch = new CountDownLatch(1);
+        CountDownLatch offlineMessagesLatch = new CountDownLatch(2);
+
+        StoreClientTCP client = new StoreClientTCP(
+                new MessageEncryptor(),
+                new MessageDecryptor(),
+                message ->  {
+                    if (message.getMessageId() == 1)
+                        firstMessageLatch.countDown();
+                    else if (message.getMessageId() == 2 || message.getMessageId() == 3)
+                        offlineMessagesLatch.countDown();
+                }
+        );
+
+        Server server = initServer(3, 3, 3, 3);
+        server.start();
+        client.connect(InetAddress.getLoopbackAddress(), 10000);
+        Thread.sleep(500);
+
+        Message normalMessage = new Message((byte)0, 1, 10, 1, "{}");
+        client.sendCommand(normalMessage);
+
+        assertTrue(firstMessageLatch.await(2, TimeUnit.SECONDS));
+
+        server.stop();
+
+        Thread.sleep(1000);
+
+        client.sendCommand(new Message((byte)0, 2, 10, 1, "{}"));
+        client.sendCommand(new Message((byte)0, 3, 10, 1, "{}"));
+
+        server = initServer(3, 3, 3, 3);
+        server.start();
+
+        assertTrue(offlineMessagesLatch.await(5, TimeUnit.SECONDS));
+
+        client.disconnect();
+        server.stop();
     }
 }

@@ -11,17 +11,27 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 public class StoreClientTCP implements IClient {
     private static final Logger logger = LoggerFactory.getLogger(StoreClientTCP.class);
 
+    private InetAddress serverAddress;
+    private int serverPort;
+
     private Socket socket;
     private DataOutputStream out;
     private DataInputStream in;
-    private volatile boolean isConnected = false;
+
+    private volatile ClientState state = ClientState.DISCONNECTED;
+    private final Object stateLock = new Object();
+
+    private final ConcurrentLinkedQueue<Message> offlineQueue = new ConcurrentLinkedQueue<>();
+
     private final IEncryptor encryptor;
     private final IDecryptor decryptor;
+
     private final Consumer<Message> onMessageReceived;
 
     public StoreClientTCP(IEncryptor encryptor, IDecryptor decryptor, Consumer<Message> onMessageReceived) {
@@ -32,25 +42,22 @@ public class StoreClientTCP implements IClient {
 
     @Override
     public void connect(InetAddress address, int port) {
-        try {
-            socket = new Socket(address, port);
-            out = new DataOutputStream(socket.getOutputStream());
-            in = new DataInputStream(socket.getInputStream());
-            isConnected = true;
+        this.serverAddress = address;
+        this.serverPort = port;
+        this.state = ClientState.CONNECTING;
 
-            Thread listenerThread = new Thread(this::listenForServerMessages, "TCP-Client-Listener");
-            listenerThread.setDaemon(true);
-            listenerThread.start();
-
-            logger.info("TCP Client initialized and ready to send to {}:{}", address, port);
-        } catch (IOException e) {
-            logger.error("Failed to initialize TCP socket", e);
-        }
+        Thread reconnectThread = new Thread(this::connectionManagerLoop, "TCP-Reconnect-Loop");
+        reconnectThread.setDaemon(true);
+        reconnectThread.start();
     }
 
     @Override
     public void disconnect() {
-        this.isConnected = false;
+        synchronized (stateLock) {
+            this.state = ClientState.DISCONNECTED;
+            stateLock.notifyAll();
+        }
+
         try {
             if (socket != null && !socket.isClosed())
                 socket.close();
@@ -61,9 +68,73 @@ public class StoreClientTCP implements IClient {
         }
     }
 
+    @Override
+    public void sendCommand(Message message) {
+        if (state != ClientState.CONNECTED) {
+            logger.info("Offline. Adding message ID {} to local queue.", message.getMessageId());
+            offlineQueue.add(message);
+            return;
+        }
+
+        try {
+            byte[] encryptedMessage = encryptor.encrypt(message);
+
+            synchronized (this) {
+                out.writeInt(encryptedMessage.length);
+                out.write(encryptedMessage);
+                out.flush();
+            }
+        } catch (IOException e) {
+            logger.warn("Connection lost while sending! Buffering message ID {}", message.getMessageId());
+            offlineQueue.add(message);
+            synchronized (stateLock) {
+                state = ClientState.CONNECTING;
+                stateLock.notifyAll();
+            }
+        }
+    }
+
+    private void connectionManagerLoop() {
+        while (state != ClientState.DISCONNECTED) {
+            if (state == ClientState.CONNECTING) {
+                try {
+                    socket = new Socket(serverAddress, serverPort);
+                    out = new DataOutputStream(socket.getOutputStream());
+                    in = new DataInputStream(socket.getInputStream());
+
+                    state = ClientState.CONNECTED;
+                    logger.info("Successfully connected to {}!", serverAddress.getHostAddress());
+
+                    Thread listenerThread = new Thread(this::listenForServerMessages, "TCP-Listener-" + socket.getLocalPort());
+                    listenerThread.setDaemon(true);
+                    listenerThread.start();
+
+                    flushOfflineQueue();
+                } catch (IOException e) {
+                    logger.debug("Connection failed. Retrying in 3 seconds...");
+                    try {
+                        Thread.sleep(3000);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            } else {
+                synchronized (stateLock) {
+                    try {
+                        if (state == ClientState.CONNECTED)
+                            stateLock.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     private void listenForServerMessages() {
         try {
-            while (isConnected && !Thread.currentThread().isInterrupted()) {
+            while (state == ClientState.CONNECTED && !Thread.currentThread().isInterrupted()) {
                 int length = in.readInt();
                 byte[] data = new byte[length];
                 in.readFully(data);
@@ -75,28 +146,35 @@ public class StoreClientTCP implements IClient {
                 logger.info("Received message from TCP Server {}:{}: {}", socket.getInetAddress().getHostName(), socket.getPort(), message);
             }
         } catch (IOException e) {
-            if (!isConnected)
-                logger.info("STOPPED LISTENING TO TCP SERVER! {}:{}", socket.getInetAddress().getHostName(), socket.getPort());
-            else
-                logger.error("CONNECTION TO THE SERVER HAS BEEN LOST! {}:{}, {}", socket.getInetAddress().getHostName(), socket.getPort(), e.getMessage());
+            synchronized (stateLock) {
+                if (state != ClientState.DISCONNECTED) {
+                    logger.warn("Lost connection to server! Switching to reconnect mode...");
+                    state = ClientState.CONNECTING;
+                    stateLock.notifyAll();
+                }
+            }
         }
     }
 
-    @Override
-    public void sendCommand(Message message) {
-        if (!isConnected) {
-            logger.info("No connection! Adding the message to the local queue...");
-            return;
-        }
+    private synchronized void flushOfflineQueue() {
+        if (offlineQueue.isEmpty()) return;
 
-        try {
-            byte[] encryptedMessage = encryptor.encrypt(message);
+        logger.info("Flushing {} offline messages to the server...", offlineQueue.size());
+        Message msg;
 
-            out.writeInt(encryptedMessage.length);
-            out.write(encryptedMessage);
-            out.flush();
-        } catch (IOException e) {
-            logger.error("Failed to send command!", e);
+        while ((msg = offlineQueue.peek()) != null) {
+            try {
+                byte[] encryptedMessage = encryptor.encrypt(msg);
+                out.writeInt(encryptedMessage.length);
+                out.write(encryptedMessage);
+                out.flush();
+
+                offlineQueue.poll();
+            } catch (IOException e) {
+                logger.error("Failed to flush queue, connection dropped again!");
+                state = ClientState.CONNECTING;
+                break;
+            }
         }
     }
 }
