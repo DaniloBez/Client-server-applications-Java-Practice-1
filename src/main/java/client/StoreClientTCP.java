@@ -13,7 +13,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.util.function.Consumer;
 
-public class StoreClientTCP {
+public class StoreClientTCP implements IClient {
     private static final Logger logger = LoggerFactory.getLogger(StoreClientTCP.class);
 
     private Socket socket;
@@ -30,6 +30,7 @@ public class StoreClientTCP {
         this.onMessageReceived = onMessageReceived;
     }
 
+    @Override
     public void connect(InetAddress address, int port) {
         try {
             socket = new Socket(address, port);
@@ -37,21 +38,24 @@ public class StoreClientTCP {
             in = new DataInputStream(socket.getInputStream());
             isConnected = true;
 
-            Thread listenerThread = new Thread(this::listenForServerMessages);
+            Thread listenerThread = new Thread(this::listenForServerMessages, "TCP-Client-Listener");
             listenerThread.setDaemon(true);
             listenerThread.start();
 
-            logger.info("Successfully connected to {}:{}", address, port);
+            logger.info("TCP Client initialized and ready to send to {}:{}", address, port);
         } catch (IOException e) {
-            logger.error("Failed to connect to {}:{}", address, port, e);
+            logger.error("Failed to initialize TCP socket", e);
         }
     }
 
+    @Override
     public void disconnect() {
         this.isConnected = false;
         try {
             if (socket != null && !socket.isClosed())
                 socket.close();
+
+            logger.info("TCP Client socket closed");
         } catch (IOException e) {
             logger.error("Error while closing client socket", e);
         }
@@ -68,14 +72,17 @@ public class StoreClientTCP {
                 if (onMessageReceived != null)
                     onMessageReceived.accept(message);
 
-                logger.info("Received message from {}:{}: {}", socket.getInetAddress().getHostName(), socket.getPort(), message);
+                logger.info("Received message from TCP Server {}:{}: {}", socket.getInetAddress().getHostName(), socket.getPort(), message);
             }
         } catch (IOException e) {
-            isConnected = false;
-            logger.info("CONNECTION TO THE SERVER HAS BEEN LOST! {}:{}", socket.getInetAddress().getHostName(), socket.getPort());
+            if (!isConnected)
+                logger.info("STOPPED LISTENING TO TCP SERVER! {}:{}", socket.getInetAddress().getHostName(), socket.getPort());
+            else
+                logger.error("CONNECTION TO THE SERVER HAS BEEN LOST! {}:{}, {}", socket.getInetAddress().getHostName(), socket.getPort(), e.getMessage());
         }
     }
 
+    @Override
     public void sendCommand(Message message) {
         if (!isConnected) {
             logger.info("No connection! Adding the message to the local queue...");

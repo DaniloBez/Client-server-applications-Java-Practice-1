@@ -35,8 +35,11 @@ public class Server {
 
     private final int port;
 
-    private AtomicBoolean isTCPServerRun = new AtomicBoolean(false);;
+    private AtomicBoolean isTCPServerRun = new AtomicBoolean(false);
     private StoreServerTCP tcpServer;
+
+    private AtomicBoolean isUDPServerRun = new AtomicBoolean(false);
+    private StoreServerUDP udpServer;
 
     private final IProcessor processor;
     private final IDecryptor decryptor;
@@ -69,7 +72,7 @@ public class Server {
 
         this.port = port;
 
-        this.executorService = Executors.newFixedThreadPool(1 + senderCount + decryptorCount + encryptorCount + processorCount);
+        this.executorService = Executors.newFixedThreadPool(2 + senderCount + decryptorCount + encryptorCount + processorCount);
     }
 
     private void validate(
@@ -98,6 +101,11 @@ public class Server {
         this.tcpServer = new StoreServerTCP(port, connectionManager, isTCPServerRun, rawInputQueue);
         executorService.execute(tcpServer);
 
+        logger.info("Starting UDP Server");
+        this.isUDPServerRun = new AtomicBoolean(true);
+        this.udpServer = new StoreServerUDP(port, connectionManager, isUDPServerRun, rawInputQueue);
+        executorService.execute(udpServer);
+
         logger.info("Launching threads (Scale up)...");
 
         AtomicInteger activeDecryptors = new AtomicInteger(decryptorCount);
@@ -121,10 +129,18 @@ public class Server {
     public void stop() {
         logger.info("A shutdown signal has been received. Initiating a graceful shutdown...");
 
+        logger.info("Shutting down TCP Server");
         isTCPServerRun.set(false);
         if (tcpServer != null)
             tcpServer.stop();
 
+        logger.info("Shutting down UDP Server");
+        isUDPServerRun.set(false);
+        if (udpServer != null)
+            udpServer.stop();
+
+
+        logger.info("Shutting down connections");
         connectionManager.closeAllConnections();
 
         try {

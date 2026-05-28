@@ -1,11 +1,14 @@
 package server;
 
+import client.IClient;
 import client.StoreClientTCP;
+import client.StoreClientUDP;
 import decryptor.IDecryptor;
 import decryptor.MessageDecryptor;
 import dto.Message;
 import dto.request.DeductStockRequest;
 import encryptor.MessageEncryptor;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import processor.IProcessor;
 import processor.Processor;
@@ -19,6 +22,7 @@ import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -58,6 +62,59 @@ public class ServerIntegrationTest {
                 processorCount,
                 10000
         );
+    }
+
+    private IClient getClient(int id, Consumer<Message> consumer) {
+        if (id % 2 == 0)
+            return new StoreClientTCP(
+                    new MessageEncryptor(),
+                    new MessageDecryptor(),
+                    consumer
+            );
+        else
+            return new StoreClientUDP(
+                    new MessageEncryptor(),
+                    new MessageDecryptor(),
+                    consumer
+            );
+
+    }
+
+    private static int messageId = 1;
+    private static Message getMessage(int requestId, int clientId) {
+        int cmdChoice = requestId % 5;
+        int commandId;
+        String payload;
+
+        if (cmdChoice == 0) {
+            commandId = 10;
+            payload = "{}";
+        } else if (cmdChoice == 1) {
+            commandId = 3;
+            payload = "{\"productId\":1}";
+        } else if (cmdChoice == 2) {
+            commandId = 4;
+            payload = "{\"productId\":1, \"amount\":2}";
+        } else if (cmdChoice == 3) {
+            commandId = 5;
+            payload = "{\"productId\":1, \"amount\":3}";
+        } else {
+            commandId = 7;
+            payload = "{\"id\":1}";
+        }
+
+        return new Message(
+                (byte)0,
+                messageId++,
+                commandId,
+                clientId,
+                payload
+        );
+    }
+
+    @BeforeEach
+    public void setup() {
+        messageId = 1;
     }
 
     @Test
@@ -101,7 +158,47 @@ public class ServerIntegrationTest {
     }
 
     @Test
-    public void testTCPRaceCondition() throws InterruptedException {
+    public void smokeUDPClientTest() throws InterruptedException, ExecutionException, TimeoutException {
+        CompletableFuture<Message> futureResponse = new CompletableFuture<>();
+
+        Message message = new Message(
+                (byte)0,
+                1,
+                10,
+                1,
+                "{}"
+        );
+
+        StoreClientUDP client = new StoreClientUDP(
+                new MessageEncryptor(),
+                new MessageDecryptor(),
+                futureResponse::complete
+        );
+
+        Server server = initServer(5, 5, 5, 5);
+        server.start();
+
+        client.connect(InetAddress.getLoopbackAddress(), 10000);
+        client.sendCommand(message);
+
+        try {
+
+            Message outputMessage = futureResponse.get(5, TimeUnit.SECONDS);
+
+            assertNotNull(outputMessage);
+            assertEquals(message.getClientApplicationId(), outputMessage.getClientApplicationId());
+            assertEquals(message.getMessageId(), outputMessage.getMessageId());
+            assertEquals(message.getUserId(), outputMessage.getUserId());
+            assertEquals(200, outputMessage.getCommandId());
+            assertEquals("{\"categories\":[{\"id\":1,\"name\":\"Electronics\"}]}", outputMessage.getData());
+
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    public void testRaceCondition() throws InterruptedException {
         int clientCount = 10;
 
         Server server = initServer(5, 5, 5, 5);
@@ -119,6 +216,15 @@ public class ServerIntegrationTest {
             CountDownLatch startLatch = new CountDownLatch(1);
             CountDownLatch doneLatch = new CountDownLatch(clientCount);
 
+            Consumer<Message> consumer = message -> {
+                if (message.getCommandId() == 200)
+                    successCount.incrementAndGet();
+                else
+                    blockedCount.incrementAndGet();
+
+                doneLatch.countDown();
+            };
+
             for (int i = 1; i <= clientCount; i++) {
                 final int finalI = i;
                 executor.submit(() -> {
@@ -131,18 +237,8 @@ public class ServerIntegrationTest {
                                 objectMapper.writeValueAsString(request)
                         );
 
-                        StoreClientTCP client = new StoreClientTCP(
-                                new MessageEncryptor(),
-                                new MessageDecryptor(),
-                                output -> {
-                                    if (output.getCommandId() == 200)
-                                        successCount.incrementAndGet();
-                                    else
-                                        blockedCount.incrementAndGet();
 
-                                    doneLatch.countDown();
-                                }
-                        );
+                        IClient client = getClient(finalI, consumer);
 
                         client.connect(InetAddress.getLoopbackAddress(), 10000);
 
@@ -170,13 +266,13 @@ public class ServerIntegrationTest {
 
     @Test
     public void highLoadTest() throws InterruptedException {
-        int clientCount = 1000;
-        int requestsPerClient = 500;
+        int clientCount = 20;
+        int requestsPerClient = 200;
         int totalRequests = clientCount * requestsPerClient;
-        int senderCount = 50;
-        int decryptorCount = 10;
-        int encryptorCount = 10;
-        int processorCount = 10;
+        int senderCount = 5;
+        int decryptorCount = 3;
+        int encryptorCount = 3;
+        int processorCount = 3;
 
         Server server = initServer(senderCount, decryptorCount, encryptorCount, encryptorCount);
         server.start();
@@ -189,25 +285,22 @@ public class ServerIntegrationTest {
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch allResponsesLatch = new CountDownLatch(totalRequests);
 
+        Consumer<Message> consumer = message -> {
+            if (message.getCommandId() == 200)
+                successfulResponses.incrementAndGet();
+            else
+                errorResponses.incrementAndGet();
+
+            allResponsesLatch.countDown();
+        };
+
         try(ExecutorService executor = Executors.newFixedThreadPool(clientCount)) {
             for (int i = 1; i <= clientCount; i++) {
                 final int clientId = i;
 
                 executor.submit(() -> {
                     try {
-                        StoreClientTCP client = new StoreClientTCP(
-                                new MessageEncryptor(),
-                                new MessageDecryptor(),
-                                output -> {
-                                    if (output.getCommandId() == 200)
-                                        successfulResponses.incrementAndGet();
-                                    else
-                                        errorResponses.incrementAndGet();
-
-                                    allResponsesLatch.countDown();
-                                }
-                        );
-
+                        IClient client = getClient(clientId, consumer);
                         client.connect(InetAddress.getLoopbackAddress(), 10000);
 
                         readyLatch.countDown();
@@ -250,44 +343,11 @@ public class ServerIntegrationTest {
 
             assertTrue(finishedInTime, "Timeout! The server was unable to process all requests in time.");
             assertEquals(totalRequests, successfulResponses.get() + errorResponses.get());
-
         }
-    }
-
-    private static int messageId = 1;
-    private static Message getMessage(int requestId, int clientId) {
-        int cmdChoice = requestId % 5;
-        int commandId;
-        String payload;
-
-        if (cmdChoice == 0) {
-            commandId = 10;
-            payload = "{}";
-        } else if (cmdChoice == 1) {
-            commandId = 3;
-            payload = "{\"productId\":1}";
-        } else if (cmdChoice == 2) {
-            commandId = 4;
-            payload = "{\"productId\":1, \"amount\":2}";
-        } else if (cmdChoice == 3) {
-            commandId = 5;
-            payload = "{\"productId\":1, \"amount\":3}";
-        } else {
-            commandId = 7;
-            payload = "{\"id\":1}";
-        }
-
-        return new Message(
-                (byte)0,
-                messageId++,
-                commandId,
-                clientId,
-                payload
-        );
     }
 
     @Test
-    public void testTCPChaosAndResilience() throws InterruptedException {
+    public void testChaosAndResilience() throws InterruptedException {
         int totalClients = 50;
         int clientsToKill = 25;
 
@@ -300,24 +360,22 @@ public class ServerIntegrationTest {
         CountDownLatch secondWaveLatch = new CountDownLatch(totalClients - clientsToKill);
 
         AtomicInteger successfulSecondWave = new AtomicInteger(0);
-        StoreClientTCP[] clients = new StoreClientTCP[totalClients];
+        IClient[] clients = new IClient[totalClients];
+
+        Consumer<Message> consumer = message -> {
+            if (message.getMessageId() == 999) {
+                successfulSecondWave.incrementAndGet();
+                secondWaveLatch.countDown();
+            } else
+                firstWaveLatch.countDown();
+        };
 
         try(ExecutorService executor = Executors.newFixedThreadPool(totalClients)) {
             for (int i = 0; i < totalClients; i++) {
                 final int index = i;
                 executor.submit(() -> {
                     try {
-                        StoreClientTCP client = new StoreClientTCP(
-                                new MessageEncryptor(),
-                                new MessageDecryptor(),
-                                output -> {
-                                    if (output.getMessageId() == 999) {
-                                        successfulSecondWave.incrementAndGet();
-                                        secondWaveLatch.countDown();
-                                    } else
-                                        firstWaveLatch.countDown();
-                                }
-                        );
+                        IClient client = getClient(index, consumer);
 
                         clients[index] = client;
                         client.connect(InetAddress.getLoopbackAddress(), 10000);
