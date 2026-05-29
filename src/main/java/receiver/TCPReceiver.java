@@ -8,17 +8,17 @@ import server.ConnectionManager;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.Socket;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedTransferQueue;
 
 public class TCPReceiver implements Runnable {
     private final static Logger logger = LoggerFactory.getLogger(TCPReceiver.class);
 
     private final Socket socket;
     private final String connectionId;
-    private final BlockingQueue<NetworkMessage<byte[]>> rawInputQueue;
+    private final LinkedTransferQueue<NetworkMessage<byte[]>> rawInputQueue;
     private final ConnectionManager connectionManager;
 
-    public TCPReceiver(Socket socket, String connectionId, BlockingQueue<NetworkMessage<byte[]>> rawInputQueue, ConnectionManager connectionManager) {
+    public TCPReceiver(Socket socket, String connectionId, LinkedTransferQueue<NetworkMessage<byte[]>> rawInputQueue, ConnectionManager connectionManager) {
         this.socket = socket;
         this.connectionId = connectionId;
         this.rawInputQueue = rawInputQueue;
@@ -47,9 +47,6 @@ public class TCPReceiver implements Runnable {
             } else {
                 logger.error("TCP client {} unexpected error: {}", connectionId, e.toString());
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            logger.error("TCP client {} thread error:", connectionId, e);
         }
         finally {
             connectionManager.removeConnection(connectionId);

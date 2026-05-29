@@ -6,19 +6,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import utils.ServerSignals;
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class EncryptorNode implements Runnable {
     private final static Logger logger = LoggerFactory.getLogger(EncryptorNode.class);
 
-    private final BlockingQueue<NetworkMessage<Message>> inputQueue;
-    private final BlockingQueue<NetworkMessage<byte[]>> outputQueue;
+    private final LinkedTransferQueue<NetworkMessage<Message>> inputQueue;
+    private final LinkedTransferQueue<NetworkMessage<byte[]>> outputQueue;
     private final IEncryptor encryptor;
     private final AtomicInteger activeEncryptorsCounter;
 
-    public EncryptorNode(BlockingQueue<NetworkMessage<Message>> inputQueue, BlockingQueue<NetworkMessage<byte[]>> outputQueue, IEncryptor encryptor,  AtomicInteger activeEncryptorsCounter) {
+    public EncryptorNode(LinkedTransferQueue<NetworkMessage<Message>> inputQueue, LinkedTransferQueue<NetworkMessage<byte[]>> outputQueue, IEncryptor encryptor,  AtomicInteger activeEncryptorsCounter) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
         this.encryptor = encryptor;
@@ -44,9 +43,18 @@ public class EncryptorNode implements Runnable {
                     break;
                 }
 
+                byte[] encryptedBytes;
+                try {
+                    encryptedBytes = encryptor.encrypt(message.data());
+                } catch (Exception e) {
+                    logger.error("Failed to encrypt message for {}. Dropping packet. Reason: {}",
+                            message.connectionId(), e.getMessage());
+                    continue;
+                }
+
                 NetworkMessage<byte[]> encryptedMsg = new NetworkMessage<>(
                         message.connectionId(),
-                        encryptor.encrypt(message.data())
+                        encryptedBytes
                 );
                 outputQueue.put(encryptedMsg);
             }

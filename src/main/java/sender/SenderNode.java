@@ -23,7 +23,6 @@ public class SenderNode implements Runnable{
     @Override
     public void run() {
         try {
-
             while (!Thread.currentThread().isInterrupted()) {
                 NetworkMessage<byte[]> message = inputQueue.take();
 
@@ -44,7 +43,7 @@ public class SenderNode implements Runnable{
                     if (sender != null)
                         sender.send(message.data());
                     else
-                            logger.info("Target connection not found: {}", message.connectionId());
+                        logger.info("Target connection not found: {}", message.connectionId());
                 }
             }
 

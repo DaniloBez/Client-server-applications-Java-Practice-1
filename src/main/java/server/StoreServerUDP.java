@@ -7,7 +7,7 @@ import receiver.UDPReceiver;
 
 import java.net.DatagramSocket;
 import java.net.SocketException;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class StoreServerUDP implements Runnable {
@@ -16,12 +16,12 @@ public class StoreServerUDP implements Runnable {
     private final int port;
     private final ConnectionManager connectionManager;
     private final AtomicBoolean isRunning;
-    private final BlockingQueue<NetworkMessage<byte[]>> rawInputQueue;
+    private final LinkedTransferQueue<NetworkMessage<byte[]>> rawInputQueue;
 
     private DatagramSocket serverSocket;
     private Thread receiverThread;
 
-    public StoreServerUDP(int port, ConnectionManager connectionManager, AtomicBoolean isRunning, BlockingQueue<NetworkMessage<byte[]>> rawInputQueue) {
+    public StoreServerUDP(int port, ConnectionManager connectionManager, AtomicBoolean isRunning, LinkedTransferQueue<NetworkMessage<byte[]>> rawInputQueue) {
         this.port = port;
         this.connectionManager = connectionManager;
         this.isRunning = isRunning;

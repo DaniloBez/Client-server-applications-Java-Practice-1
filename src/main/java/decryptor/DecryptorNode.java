@@ -6,18 +6,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import utils.ServerSignals;
 
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class DecryptorNode implements Runnable{
     private static final Logger logger = LoggerFactory.getLogger(DecryptorNode.class);
 
-    private final BlockingQueue<NetworkMessage<byte[]>> inputQueue;
-    private final BlockingQueue<NetworkMessage<Message>> outputQueue;
+    private final LinkedTransferQueue<NetworkMessage<byte[]>> inputQueue;
+    private final LinkedTransferQueue<NetworkMessage<Message>> outputQueue;
     private final IDecryptor decryptor;
     private final AtomicInteger activeEncryptorsCounter;
 
-    public DecryptorNode(BlockingQueue<NetworkMessage<byte[]>> inputQueue, BlockingQueue<NetworkMessage<Message>> outputQueue, IDecryptor decryptor, AtomicInteger activeEncryptorsCounter) {
+    public DecryptorNode(LinkedTransferQueue<NetworkMessage<byte[]>> inputQueue, LinkedTransferQueue<NetworkMessage<Message>> outputQueue, IDecryptor decryptor, AtomicInteger activeEncryptorsCounter) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
         this.decryptor = decryptor;
@@ -43,9 +43,18 @@ public class DecryptorNode implements Runnable{
                     break;
                 }
 
+                Message payload;
+                try {
+                    payload = decryptor.decrypt(message.data());
+                } catch (Exception e) {
+                    logger.warn("Security/Format error! Dropped invalid packet from {}: {}",
+                            message.connectionId(), e.getMessage());
+                    continue;
+                }
+
                 NetworkMessage<Message> decryptedMessage = new NetworkMessage<>(
                         message.connectionId(),
-                        decryptor.decrypt(message.data())
+                        payload
                 );
 
                 outputQueue.put(decryptedMessage);

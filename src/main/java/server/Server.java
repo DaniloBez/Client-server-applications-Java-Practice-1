@@ -15,20 +15,17 @@ import sender.SenderNode;
 import utils.ServerSignals;
 
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Server {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
 
-    private final BlockingQueue<NetworkMessage<byte[]>> rawInputQueue = new LinkedBlockingQueue<>();
-    private final BlockingQueue<NetworkMessage<Message>> decodedQueue = new LinkedBlockingQueue<>();
-    private final BlockingQueue<NetworkMessage<Message>> responseQueue = new LinkedBlockingQueue<>();
-    private final BlockingQueue<NetworkMessage<byte[]>> rawOutputQueue = new LinkedBlockingQueue<>();
+    private final LinkedTransferQueue<NetworkMessage<byte[]>> rawInputQueue = new LinkedTransferQueue<>();
+    private final LinkedTransferQueue<NetworkMessage<Message>> decodedQueue = new LinkedTransferQueue<>();
+    private final LinkedTransferQueue<NetworkMessage<Message>> responseQueue = new LinkedTransferQueue<>();
+    private final LinkedTransferQueue<NetworkMessage<byte[]>> rawOutputQueue = new LinkedTransferQueue<>();
 
     private final ExecutorService executorService;
     private final ConnectionManager connectionManager = new ConnectionManager();
@@ -108,6 +105,12 @@ public class Server {
 
         logger.info("Launching threads (Scale up)...");
 
+        connectionManager.setOnClientDisconnected(deadConnectionId -> {
+            decodedQueue.put(new NetworkMessage<>(deadConnectionId, ServerSignals.DISCONNECT_PILL_MSG));
+        });
+
+        connectionManager.setOnResendMessage(responseQueue::put);
+
         AtomicInteger activeDecryptors = new AtomicInteger(decryptorCount);
         for (int i = 0; i < decryptorCount; i++)
             executorService.submit(new DecryptorNode(rawInputQueue, decodedQueue, decryptor, activeDecryptors));
@@ -143,13 +146,7 @@ public class Server {
         logger.info("Shutting down connections");
         connectionManager.closeAllConnections();
 
-        try {
-            rawInputQueue.put(ServerSignals.POISON_PILL_BYTES);
-        }
-        catch (InterruptedException e) {
-            logger.error("Interrupted while sending poison pills: ", e);
-            Thread.currentThread().interrupt();
-        }
+        rawInputQueue.put(ServerSignals.POISON_PILL_BYTES);
 
         executorService.shutdown();
 

@@ -7,10 +7,11 @@ import decryptor.IDecryptor;
 import decryptor.MessageDecryptor;
 import dto.Message;
 import dto.request.DeductStockRequest;
+import encryptor.IEncryptor;
 import encryptor.MessageEncryptor;
-import org.assertj.core.api.Assert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import processor.IProcessor;
 import processor.Processor;
 import repository.ProductCategoryRepository;
@@ -18,9 +19,13 @@ import repository.ProductRepository;
 import service.ProductCategoryService;
 import service.ProductService;
 import tools.jackson.databind.ObjectMapper;
+import utils.Constants;
 
 import java.math.BigDecimal;
 import java.net.InetAddress;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -267,13 +272,13 @@ public class ServerIntegrationTest {
 
     @Test
     public void highLoadTest() throws InterruptedException {
-        int clientCount = 20;
-        int requestsPerClient = 200;
+        int clientCount = 500;
+        int requestsPerClient = 100;
         int totalRequests = clientCount * requestsPerClient;
-        int senderCount = 5;
-        int decryptorCount = 3;
-        int encryptorCount = 3;
-        int processorCount = 3;
+        int senderCount = 25;
+        int decryptorCount = 5;
+        int encryptorCount = 5;
+        int processorCount = 5;
 
         Server server = initServer(senderCount, decryptorCount, encryptorCount, encryptorCount);
         server.start();
@@ -295,6 +300,8 @@ public class ServerIntegrationTest {
             allResponsesLatch.countDown();
         };
 
+        List<IClient> clients = Collections.synchronizedList(new ArrayList<>());
+
         try(ExecutorService executor = Executors.newFixedThreadPool(clientCount)) {
             for (int i = 1; i <= clientCount; i++) {
                 final int clientId = i;
@@ -302,6 +309,8 @@ public class ServerIntegrationTest {
                 executor.submit(() -> {
                     try {
                         IClient client = getClient(clientId, consumer);
+                        clients.add(client);
+
                         client.connect(InetAddress.getLoopbackAddress(), 10000);
 
                         readyLatch.countDown();
@@ -310,6 +319,8 @@ public class ServerIntegrationTest {
                         for (int requestCount = 0; requestCount < requestsPerClient; requestCount++) {
                             Message input = getMessage(requestCount, clientId);
                             client.sendCommand(input);
+
+                            Thread.sleep(5);
                         }
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -337,9 +348,13 @@ public class ServerIntegrationTest {
             System.out.println("Errors (400/500): " + errorResponses.get());
             System.out.println("Time taken: " + duration + " ms");
             if (duration > 0)
-                System.out.println("Throughput (TPS): " + (totalRequests * 1000L / duration) + " req/sec");
+                System.out.println("Throughput (TPS + UDP): " + (totalRequests * 1000L / duration) + " req/sec");
 
+            Thread.sleep(500);
+            for (IClient c : clients)
+                c.disconnect();
 
+            Thread.sleep(500);
             server.stop();
 
             assertTrue(finishedInTime, "Timeout! The server was unable to process all requests in time.");
@@ -450,6 +465,110 @@ public class ServerIntegrationTest {
         server.start();
 
         assertTrue(offlineMessagesLatch.await(5, TimeUnit.SECONDS));
+
+        client.disconnect();
+        server.stop();
+    }
+
+    @Test
+    public void testUdpReaperAndCacheClearing() throws InterruptedException{
+        Server server = initServer(3, 3, 3, 3);
+        server.start();
+        Thread.sleep(200);
+
+        BlockingQueue<Message> receivedMessages = new LinkedBlockingQueue<>();
+
+        StoreClientUDP client = new StoreClientUDP(
+                new MessageEncryptor(),
+                new MessageDecryptor(),
+                receivedMessages::add
+        );
+
+        client.connect(InetAddress.getLoopbackAddress(), 10000);
+
+        Message msg1 = new Message((byte)0, 777, 10, 1, "{}");
+        client.sendCommand(msg1);
+
+        Message resp1 = receivedMessages.poll(3, TimeUnit.SECONDS);
+        assertNotNull(resp1);
+        assertEquals(200, resp1.getCommandId());
+
+        client.sendCommand(msg1);
+        Message resp2 = receivedMessages.poll(2, TimeUnit.SECONDS);
+        assertNull(resp2);
+
+        Thread.sleep(20000);
+
+        client.sendCommand(msg1);
+        Message resp3 = receivedMessages.poll(3, TimeUnit.SECONDS);
+        assertNotNull(resp3);
+        assertEquals(200, resp3.getCommandId());
+
+        client.disconnect();
+        server.stop();
+    }
+
+    @Test
+    public void testUdpClientIdempotencyWithMock() throws Exception {
+        Server server = initServer(3, 3, 3, 3);
+        server.start();
+        Thread.sleep(200);
+
+        MessageEncryptor realEncryptor = new MessageEncryptor();
+        IEncryptor spyEncryptor = Mockito.spy(realEncryptor);
+
+        Mockito.doAnswer(invocation -> {
+            Message msg = invocation.getArgument(0);
+            if (msg.getCommandId() == Constants.ACK_COMMAND_ID) {
+                return new byte[]{1, 2, 3};
+            }
+            return realEncryptor.encrypt(msg);
+        }).when(spyEncryptor).encrypt(Mockito.any(Message.class));
+
+        MessageDecryptor realDecryptor = new MessageDecryptor();
+        IDecryptor spyDecryptor = Mockito.spy(realDecryptor);
+
+        AtomicInteger rawMessagesCount = new AtomicInteger(0);
+        CountDownLatch rawMessagesLatch = new CountDownLatch(6);
+
+        Mockito.doAnswer(invocation -> {
+            Message msg = (Message) invocation.callRealMethod();
+            
+            if (msg != null && msg.getCommandId() != Constants.ACK_COMMAND_ID) {
+                rawMessagesCount.incrementAndGet();
+                rawMessagesLatch.countDown();
+            }
+            return msg;
+        }).when(spyDecryptor).decrypt(Mockito.any(byte[].class));
+
+        AtomicInteger processedMessagesCount = new AtomicInteger(0);
+        CountDownLatch firstMessageLatch = new CountDownLatch(1);
+
+        StoreClientUDP client = new StoreClientUDP(
+                spyEncryptor,
+                spyDecryptor,
+                _ -> {
+                    processedMessagesCount.incrementAndGet();
+                    firstMessageLatch.countDown();
+                }
+        );
+
+        client.connect(InetAddress.getLoopbackAddress(), 10000);
+
+        Message request = new Message((byte)0, 777, 10, 1, "{}");
+        client.sendCommand(request);
+
+        assertTrue(firstMessageLatch.await(3, TimeUnit.SECONDS));
+
+
+        boolean serverSentAllRetries = rawMessagesLatch.await(3, TimeUnit.SECONDS);
+
+        Thread.sleep(300);
+
+        assertTrue(serverSentAllRetries);
+        assertEquals(6, rawMessagesCount.get());
+
+        assertEquals(1, processedMessagesCount.get());
 
         client.disconnect();
         server.stop();

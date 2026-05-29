@@ -13,4 +13,6 @@ public class ServerSignals {
             null,
             new Message((byte)0, 0L, -1, 0, "")
     );
+
+    public static final Message DISCONNECT_PILL_MSG = new Message((byte)0, 0L, -1, 0, "");
 }
