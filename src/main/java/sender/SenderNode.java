@@ -32,21 +32,12 @@ public class SenderNode implements Runnable{
                     break;
                 }
 
-                if (ConnectionManager.BROADCAST_ID.equals(message.connectionId()))
-                    for(ISender sender : connectionManager.getAllSenders())
-                        if (sender != null)
-                            sender.send(message.data());
-                        else
-                            logger.info("Target connection not found while sending broadcast: {}", message.connectionId());
-                else {
-                    ISender sender = connectionManager.getSender(message.connectionId());
-                    if (sender != null)
-                        sender.send(message.data());
-                    else
-                        logger.info("Target connection not found: {}", message.connectionId());
-                }
+                ISender sender = connectionManager.getSender(message.connectionId());
+                if (sender != null)
+                    sender.send(message.data());
+                else
+                    logger.info("Target connection not found: {}", message.connectionId());
             }
-
         } catch (InterruptedException e) {
             logger.error("SenderNode thread {} interrupted: {}", Thread.currentThread().getName(), e.getMessage());
             Thread.currentThread().interrupt();

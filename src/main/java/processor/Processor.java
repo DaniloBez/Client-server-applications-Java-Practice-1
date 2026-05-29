@@ -1,17 +1,20 @@
 package processor;
 
 import dto.Message;
+import dto.broadcast.*;
 import dto.request.*;
 import dto.response.*;
 import service.ProductCategoryService;
 import service.ProductService;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.function.Function;
 
 public class Processor implements IProcessor {
-    private final HashMap<Integer, Function<Message, Message>> router;
+    private final HashMap<Integer, Function<Message, List<Message>>> router;
     private final ObjectMapper objectMapper;
 
     private final ProductService productService;
@@ -46,18 +49,18 @@ public class Processor implements IProcessor {
     }
 
     @Override
-    public Message process(Message message) {
+    public List<Message> process(Message message) {
         try {
-            Function<Message, Message> handler = router.get(message.getCommandId());
+            Function<Message, List<Message>> handler = router.get(message.getCommandId());
 
             if (handler == null)
-                return buildErrorMessage(message, 404, "Route Not Found", "Unknown command ID: " + message.getCommandId());
+                return List.of(buildErrorMessage(message, 404, "Route Not Found", "Unknown command ID: " + message.getCommandId()));
 
             return handler.apply(message);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return buildErrorMessage(message, 400, "Bad Request", e.getMessage());
+            return List.of(buildErrorMessage(message, 400, "Bad Request", e.getMessage()));
         } catch (Exception e) {
-            return buildErrorMessage(message, 500, "Internal Server Error", e.getMessage());
+            return List.of(buildErrorMessage(message, 500, "Internal Server Error", e.getMessage()));
         }
     }
 
@@ -78,22 +81,33 @@ public class Processor implements IProcessor {
         }
     }
 
-    private Message handleCreateCategory(Message message) {
+    private List<Message> handleCreateCategory(Message message) {
         CreateCategoryRequest request = objectMapper.readValue(message.getData(), CreateCategoryRequest.class);
 
         int id = categoryService.createCategory(request.name());
-        CreateResourceResponse response = new CreateResourceResponse(id);
 
-        return new Message(
+        CreateResourceResponse directResponse = new CreateResourceResponse(id);
+        Message directMessage = new Message(
                 message.getClientApplicationId(),
                 message.getMessageId(),
                 200,
                 message.getUserId(),
-                objectMapper.writeValueAsString(response)
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        CategoryCreatedBroadcast broadcastResponse = new CategoryCreatedBroadcast(id, request.name());
+        Message broadcastMessage = new Message(
+                message.getClientApplicationId(),
+                0,
+                message.getCommandId(),
+                BROADCAST_USER_ID,
+                objectMapper.writeValueAsString(broadcastResponse)
+        );
+
+        return List.of(directMessage, broadcastMessage);
     }
 
-    private Message handleCreateProduct(Message message) {
+    private List<Message> handleCreateProduct(Message message) {
         CreateProductRequest request = objectMapper.readValue(message.getData(), CreateProductRequest.class);
 
         int id = productService.createProduct(
@@ -103,114 +117,191 @@ public class Processor implements IProcessor {
                 request.categoryId()
         );
 
-        CreateResourceResponse response = new CreateResourceResponse(id);
-
-        return new Message(
+        CreateResourceResponse directResponse = new CreateResourceResponse(id);
+        Message directMessage = new Message(
                 message.getClientApplicationId(),
                 message.getMessageId(),
                 200,
                 message.getUserId(),
-                objectMapper.writeValueAsString(response)
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        ProductCreatedBroadcast broadcastResponse = new ProductCreatedBroadcast(
+                id,
+                request.name(),
+                request.initialStock(),
+                request.price(),
+                request.categoryId()
+        );
+        Message broadcastMessage = new Message(
+                message.getClientApplicationId(),
+                0,
+                message.getCommandId(),
+                BROADCAST_USER_ID,
+                objectMapper.writeValueAsString(broadcastResponse)
+        );
+
+        return List.of(directMessage, broadcastMessage);
     }
 
-    private Message handleGetStockQuantity(Message message) {
+    private List<Message> handleGetStockQuantity(Message message) {
         GetStockRequest request = objectMapper.readValue(message.getData(), GetStockRequest.class);
 
         int quantity = productService.getStockQuantity(request.productId());
         StockQuantityResponse response = new StockQuantityResponse(request.productId(), quantity);
 
-        return new Message(
+        return List.of( new Message(
                 message.getClientApplicationId(),
                 message.getMessageId(),
                 200,
                 message.getUserId(),
                 objectMapper.writeValueAsString(response)
-        );
+        ));
     }
 
-    private Message handleAddStock(Message message) {
+    private List<Message> handleAddStock(Message message) {
         AddStockRequest request = objectMapper.readValue(message.getData(), AddStockRequest.class);
 
         productService.addStock(request.productId(), request.amount());
-        ActionStatusResponse response = new ActionStatusResponse(true, "Stock added successfully");
 
-        return new Message(
+        ActionStatusResponse directResponse = new ActionStatusResponse(true, "Stock added successfully");
+        Message directMessage =  new Message(
                 message.getClientApplicationId(),
                 message.getMessageId(),
                 200,
                 message.getUserId(),
-                objectMapper.writeValueAsString(response)
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        StockAddedBroadcast broadcastResponse = new StockAddedBroadcast(request.productId(), request.amount());
+        Message broadcastMessage = new Message(
+                message.getClientApplicationId(),
+                0,
+                message.getCommandId(),
+                BROADCAST_USER_ID,
+                objectMapper.writeValueAsString(broadcastResponse)
+        );
+
+        return List.of(directMessage, broadcastMessage);
     }
 
-    private Message handleDeductStock(Message message) {
+    private List<Message> handleDeductStock(Message message) {
         DeductStockRequest request = objectMapper.readValue(message.getData(), DeductStockRequest.class);
 
         productService.deductStock(request.productId(), request.amount());
-        ActionStatusResponse response = new ActionStatusResponse(true, "Stock deducted successfully");
 
-        return new Message(
+        ActionStatusResponse directResponse = new ActionStatusResponse(true, "Stock deducted successfully");
+        Message directMessage =  new Message(
                 message.getClientApplicationId(),
                 message.getMessageId(),
                 200,
                 message.getUserId(),
-                objectMapper.writeValueAsString(response)
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        StockDeductedBroadcast broadcastResponse = new StockDeductedBroadcast(request.productId(), request.amount());
+        Message broadcastMessage = new Message(
+                message.getClientApplicationId(),
+                0,
+                message.getCommandId(),
+                BROADCAST_USER_ID,
+                objectMapper.writeValueAsString(broadcastResponse)
+        );
+
+        return List.of(directMessage, broadcastMessage);
     }
 
-    private Message handleSetProductPrice(Message message) {
+    private List<Message> handleSetProductPrice(Message message) {
         SetPriceRequest request = objectMapper.readValue(message.getData(), SetPriceRequest.class);
 
         productService.setProductPrice(request.productId(), request.newPrice());
-        ActionStatusResponse response = new ActionStatusResponse(true, "Price updated successfully");
 
-        return new Message(
+        ActionStatusResponse directResponse = new ActionStatusResponse(true, "Price updated successfully");
+        Message directMessage = new Message(
                 message.getClientApplicationId(),
                 message.getMessageId(),
                 200,
                 message.getUserId(),
-                objectMapper.writeValueAsString(response)
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        ProductPriceUpdatedBroadcast broadcastResponse = new ProductPriceUpdatedBroadcast(request.productId(), request.newPrice());
+        Message broadcastMessage = new Message(
+                message.getClientApplicationId(),
+                0,
+                message.getCommandId(),
+                BROADCAST_USER_ID,
+                objectMapper.writeValueAsString(broadcastResponse)
+        );
+
+        return List.of(directMessage, broadcastMessage);
     }
 
-    private Message handleGetCategory(Message message) {
+    private List<Message> handleGetCategory(Message message) {
         GetByIdRequest request = objectMapper.readValue(message.getData(), GetByIdRequest.class);
 
         var category = categoryService.getCategory(request.id());
         CategoryResponse response = new CategoryResponse(category.getId(), category.getName().get());
 
-        return new Message(
+        return List.of( new Message(
                 message.getClientApplicationId(), message.getMessageId(), 200, message.getUserId(),
                 objectMapper.writeValueAsString(response)
-        );
+        ));
     }
 
-    private Message handleUpdateCategoryName(Message message) {
+    private List<Message> handleUpdateCategoryName(Message message) {
         UpdateCategoryRequest request = objectMapper.readValue(message.getData(), UpdateCategoryRequest.class);
 
         categoryService.updateCategoryName(request.id(), request.newName());
-        ActionStatusResponse response = new ActionStatusResponse(true, "Category updated successfully");
 
-        return new Message(
-                message.getClientApplicationId(), message.getMessageId(), 200, message.getUserId(),
-                objectMapper.writeValueAsString(response)
+        ActionStatusResponse directResponse = new ActionStatusResponse(true, "Category updated successfully");
+        Message directMessage = new Message(
+                message.getClientApplicationId(),
+                message.getMessageId(),
+                200,
+                message.getUserId(),
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        CategoryNameUpdatedBroadcast broadcastResponse = new CategoryNameUpdatedBroadcast(request.id(), request.newName());
+        Message broadcastMessage = new Message(
+                message.getClientApplicationId(),
+                0,
+                message.getCommandId(),
+                BROADCAST_USER_ID,
+                objectMapper.writeValueAsString(broadcastResponse)
+        );
+
+        return List.of(directMessage, broadcastMessage);
     }
 
-    private Message handleDeleteCategory(Message message) {
+    private List<Message> handleDeleteCategory(Message message) {
         GetByIdRequest request = objectMapper.readValue(message.getData(), GetByIdRequest.class);
 
         categoryService.deleteCategory(request.id());
-        ActionStatusResponse response = new ActionStatusResponse(true, "Category deleted successfully");
 
-        return new Message(
-                message.getClientApplicationId(), message.getMessageId(), 200, message.getUserId(),
-                objectMapper.writeValueAsString(response)
+        ActionStatusResponse directResponse = new ActionStatusResponse(true, "Category deleted successfully");
+        Message directMessage = new Message(
+                message.getClientApplicationId(),
+                message.getMessageId(),
+                200,
+                message.getUserId(),
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        CategoryDeletedBroadcast broadcastResponse = new CategoryDeletedBroadcast(request.id());
+        Message broadcastMessage = new Message(
+                message.getClientApplicationId(),
+                0,
+                message.getCommandId(),
+                BROADCAST_USER_ID,
+                objectMapper.writeValueAsString(broadcastResponse)
+        );
+
+        return List.of(directMessage, broadcastMessage);
     }
 
-    private Message handleGetAllCategories(Message message) {
+    private List<Message> handleGetAllCategories(Message message) {
         var categories = categoryService.getAllCategories();
 
         var categoryResponses = categories.stream()
@@ -219,13 +310,13 @@ public class Processor implements IProcessor {
 
         AllCategoriesResponse response = new AllCategoriesResponse(categoryResponses);
 
-        return new Message(
+        return List.of( new Message(
                 message.getClientApplicationId(), message.getMessageId(), 200, message.getUserId(),
                 objectMapper.writeValueAsString(response)
-        );
+        ));
     }
 
-    private Message handleGetProduct(Message message) {
+    private List<Message> handleGetProduct(Message message) {
         GetByIdRequest request = objectMapper.readValue(message.getData(), GetByIdRequest.class);
 
         var product = productService.getProduct(request.id());
@@ -238,28 +329,50 @@ public class Processor implements IProcessor {
                 product.getProductCategoryId().get()
         );
 
-        return new Message(
+        return List.of( new Message(
                 message.getClientApplicationId(), message.getMessageId(), 200, message.getUserId(),
                 objectMapper.writeValueAsString(response)
-        );
+        ));
     }
 
-    private Message handleDeleteProduct(Message message) {
+    private List<Message> handleDeleteProduct(Message message) {
         GetByIdRequest request = objectMapper.readValue(message.getData(), GetByIdRequest.class);
 
         boolean isSuccessful = productService.deleteProduct(request.id());
-        ActionStatusResponse response = new ActionStatusResponse(true, "Product deleted successfully");
+        ActionStatusResponse directResponse = new ActionStatusResponse(true, "Product deleted successfully");
 
         if (!isSuccessful)
-            response = new ActionStatusResponse(false, "Product was already deleted");
+            directResponse = new ActionStatusResponse(false, "Product was already deleted");
 
-        return new Message(
-                message.getClientApplicationId(), message.getMessageId(), 200, message.getUserId(),
-                objectMapper.writeValueAsString(response)
+        List<Message> messages = new ArrayList<>(2);
+
+        Message directMessage =  new Message(
+                message.getClientApplicationId(),
+                message.getMessageId(),
+                200,
+                message.getUserId(),
+                objectMapper.writeValueAsString(directResponse)
         );
+
+        messages.add(directMessage);
+
+        if (isSuccessful) {
+            ProductDeletedBroadcast broadcastResponse = new ProductDeletedBroadcast(request.id());
+            Message broadcastMessage = new Message(
+                    message.getClientApplicationId(),
+                    0,
+                    message.getCommandId(),
+                    BROADCAST_USER_ID,
+                    objectMapper.writeValueAsString(broadcastResponse)
+            );
+
+            messages.add(broadcastMessage);
+        }
+
+       return messages;
     }
 
-    private Message handleGetProductsByCategory(Message message) {
+    private List<Message> handleGetProductsByCategory(Message message) {
         GetByIdRequest request = objectMapper.readValue(message.getData(), GetByIdRequest.class);
 
         var products = productService.getProductsByCategory(request.id());
@@ -276,12 +389,12 @@ public class Processor implements IProcessor {
 
         AllProductsResponse response = new AllProductsResponse(productResponses);
 
-        return new Message(
+        return List.of( new Message(
                 message.getClientApplicationId(),
                 message.getMessageId(),
                 200,
                 message.getUserId(),
                 objectMapper.writeValueAsString(response)
-        );
+        ));
     }
 }

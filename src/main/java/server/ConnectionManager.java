@@ -133,4 +133,8 @@ public class ConnectionManager {
             }
         }
     }
+
+    public Iterable<String> getActiveConnectionIds() {
+        return activeConnections.keySet();
+    }
 }

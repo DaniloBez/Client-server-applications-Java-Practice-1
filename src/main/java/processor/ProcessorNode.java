@@ -9,13 +9,12 @@ import org.slf4j.LoggerFactory;
 import utils.Constants;
 import utils.ServerSignals;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 public class ProcessorNode implements Runnable {
     private final static Logger logger = LoggerFactory.getLogger(ProcessorNode.class);
@@ -24,17 +23,27 @@ public class ProcessorNode implements Runnable {
     private final LinkedTransferQueue<NetworkMessage<Message>> outputQueue;
     private final IProcessor processor;
     private final AtomicInteger activeProcessorsCounter;
+    private final Supplier<Iterable<String>> activeConnectionsSupplier;
+
+    private static final AtomicLong broadcastIdGenerator = new AtomicLong(Long.MAX_VALUE / 2);
 
     private static final Map<String, Set<Long>> idempotencyCache = new ConcurrentHashMap<>();
 
     @Getter
     private static final Map<String, UnackedMessage<NetworkMessage<Message>>> unackedMessages = new ConcurrentHashMap<>();
 
-    public ProcessorNode(LinkedTransferQueue<NetworkMessage<Message>> inputQueue, LinkedTransferQueue<NetworkMessage<Message>> outputQueue, IProcessor processor, AtomicInteger activeProcessorsCounter) {
+    public ProcessorNode(
+            LinkedTransferQueue<NetworkMessage<Message>> inputQueue,
+            LinkedTransferQueue<NetworkMessage<Message>> outputQueue,
+            IProcessor processor,
+            AtomicInteger activeProcessorsCounter,
+            Supplier<Iterable<String>> activeConnectionsSupplier
+    ) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
         this.processor = processor;
         this.activeProcessorsCounter = activeProcessorsCounter;
+        this.activeConnectionsSupplier = activeConnectionsSupplier;
     }
 
     @Override
@@ -80,25 +89,43 @@ public class ProcessorNode implements Runnable {
                     continue;
                 }
 
-                Message message = processor.process(inputMessage.data());
+                List<Message> resultMessages = processor.process(inputMessage.data());
 
-                NetworkMessage<Message> outputMessage;
-                if (message.getUserId() == Processor.BROADCAST_USER_ID)
-                    outputMessage = new NetworkMessage<>("BROADCAST", message);
-                else {
-                    outputMessage = new NetworkMessage<>(inputMessage.connectionId(), message);
+                for (Message message : resultMessages) {
+                    if (message.getUserId() == Processor.BROADCAST_USER_ID) {
+                        for (String targetConnId : activeConnectionsSupplier.get()) {
+                            if (targetConnId.equals(inputMessage.connectionId()))
+                                continue;
 
-                    if (isUDPClient) {
-                        String key = inputMessage.connectionId() + ":" + message.getMessageId();
-                        unackedMessages.put(key, new UnackedMessage<>(outputMessage));
+                            Message directBroadcast = new Message(
+                                    message.getClientApplicationId(),
+                                    broadcastIdGenerator.incrementAndGet(),
+                                    message.getCommandId(),
+                                    message.getUserId(),
+                                    message.getData()
+                            );
+
+                            NetworkMessage<Message> outputMessage = new NetworkMessage<>(targetConnId, directBroadcast);
+
+                            if (targetConnId.startsWith(Constants.UDP_HEADER)) {
+                                String key = targetConnId + ":" + directBroadcast.getMessageId();
+                                unackedMessages.put(key, new UnackedMessage<>(outputMessage));
+                            }
+                            outputQueue.put(outputMessage);
+                        }
+                    } else {
+                        NetworkMessage<Message> outputMessage = new NetworkMessage<>(inputMessage.connectionId(), message);
+
+                        if (isUDPClient) {
+                            String key = inputMessage.connectionId() + ":" + message.getMessageId();
+                            unackedMessages.put(key, new UnackedMessage<>(outputMessage));
+                        }
+                        outputQueue.put(outputMessage);
                     }
                 }
 
-                outputQueue.put(outputMessage);
-
-                if (isUDPClient) {
+                if (isUDPClient)
                     sendAck(inputMessage);
-                }
             }
         } catch (InterruptedException e) {
             logger.info("ProcessorNode thread {} interrupted: {}", Thread.currentThread().getName(), e.getMessage());

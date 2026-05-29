@@ -117,7 +117,7 @@ public class Server {
 
         AtomicInteger activeProcessors = new AtomicInteger(processorCount);
         for (int i = 0; i < processorCount; i++)
-            executorService.submit(new ProcessorNode(decodedQueue, responseQueue, processor, activeProcessors));
+            executorService.submit(new ProcessorNode(decodedQueue, responseQueue, processor, activeProcessors, connectionManager::getActiveConnectionIds));
 
         AtomicInteger activeEncryptors = new AtomicInteger(encryptorCount);
         for (int i = 0; i < encryptorCount; i++)

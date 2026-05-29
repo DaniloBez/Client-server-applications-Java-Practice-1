@@ -2,6 +2,8 @@ package processor;
 
 import dto.Message;
 
+import java.util.List;
+
 public interface IProcessor {
-    Message process(Message message);
+    List<Message> process(Message message);
 }
