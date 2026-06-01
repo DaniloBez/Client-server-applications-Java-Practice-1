@@ -8,6 +8,7 @@ import server.ConnectionManager;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.util.concurrent.LinkedTransferQueue;
 
 public class TCPReceiver implements Runnable {
@@ -29,11 +30,23 @@ public class TCPReceiver implements Runnable {
     public void run() {
         try (DataInputStream in = new DataInputStream(socket.getInputStream())) {
             while (!Thread.currentThread().isInterrupted()) {
-                int length = in.readInt();
-                byte[] data = new byte[length];
-                in.readFully(data);
+                byte[] header = new byte[14];
+                in.readFully(header);
 
-                NetworkMessage<byte[]> envelope = new NetworkMessage<>(connectionId, data);
+                ByteBuffer headerBuffer = ByteBuffer.wrap(header);
+                headerBuffer.position(10);
+                int payloadSize = headerBuffer.getInt();
+
+                int remainingSize = 2 + payloadSize + 2;
+                byte[] remainingData = new byte[remainingSize];
+
+                in.readFully(remainingData);
+
+                byte[] fullMessage = new byte[14 + remainingSize];
+                System.arraycopy(header, 0, fullMessage, 0, 14);
+                System.arraycopy(remainingData, 0, fullMessage, 14, remainingSize);
+
+                NetworkMessage<byte[]> envelope = new NetworkMessage<>(connectionId, fullMessage);
                 rawInputQueue.put(envelope);
             }
         } catch (IOException e) {

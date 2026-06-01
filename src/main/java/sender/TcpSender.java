@@ -19,7 +19,6 @@ public class TcpSender implements ISender {
     @Override
     public synchronized void send(byte[] message) {
         try {
-            out.writeInt(message.length);
             out.write(message);
             out.flush();
         } catch (IOException e) {

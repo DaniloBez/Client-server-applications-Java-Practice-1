@@ -11,6 +11,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
@@ -80,7 +81,6 @@ public class StoreClientTCP implements IClient {
             byte[] encryptedMessage = encryptor.encrypt(message);
 
             synchronized (this) {
-                out.writeInt(encryptedMessage.length);
                 out.write(encryptedMessage);
                 out.flush();
             }
@@ -135,11 +135,22 @@ public class StoreClientTCP implements IClient {
     private void listenForServerMessages() {
         try {
             while (state == ClientState.CONNECTED && !Thread.currentThread().isInterrupted()) {
-                int length = in.readInt();
-                byte[] data = new byte[length];
-                in.readFully(data);
+                byte[] header = new byte[14];
+                in.readFully(header);
 
-                Message message = decryptor.decrypt(data);
+                ByteBuffer headerBuffer = ByteBuffer.wrap(header);
+                headerBuffer.position(10);
+                int payloadSize = headerBuffer.getInt();
+
+                int remainingSize = 2 + payloadSize + 2;
+                byte[] remainingData = new byte[remainingSize];
+                in.readFully(remainingData);
+
+                byte[] fullData = new byte[14 + remainingSize];
+                System.arraycopy(header, 0, fullData, 0, 14);
+                System.arraycopy(remainingData, 0, fullData, 14, remainingSize);
+
+                Message message = decryptor.decrypt(fullData);
                 if (onMessageReceived != null)
                     onMessageReceived.accept(message);
 
@@ -165,7 +176,6 @@ public class StoreClientTCP implements IClient {
         while ((msg = offlineQueue.peek()) != null) {
             try {
                 byte[] encryptedMessage = encryptor.encrypt(msg);
-                out.writeInt(encryptedMessage.length);
                 out.write(encryptedMessage);
                 out.flush();
 
