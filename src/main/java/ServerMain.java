@@ -1,0 +1,117 @@
+import decryptor.IDecryptor;
+import decryptor.MessageDecryptor;
+import encryptor.MessageEncryptor;
+import processor.IProcessor;
+import processor.Processor;
+import repository.ProductCategoryRepository;
+import repository.ProductRepository;
+import server.Server;
+import service.ProductCategoryService;
+import service.ProductService;
+
+import java.util.Scanner;
+
+public class ServerMain {
+    private static Server currentServer = null;
+    private static boolean isRunning = false;
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        printWelcomeMessage();
+        autoStartServer();
+
+        label:
+        while (true) {
+            String input = scanner.nextLine().trim().toLowerCase();
+
+            switch (input) {
+                case "exit":
+                    handleExit();
+                    break label;
+                case "start":
+                    handleStart();
+                    break;
+                case "stop":
+                    handleStop();
+                    break;
+                default:
+                    System.out.println("Unknown command. Use: 'start', 'stop' or 'exit'");
+                    break;
+            }
+        }
+
+        System.out.println("The main branch has been completed. Application closed.");
+    }
+
+    private static void printWelcomeMessage() {
+        System.out.println("Store Server Control Panel");
+        System.out.println("Available commands: 'start', 'stop', 'exit'");
+    }
+
+    private static void autoStartServer() {
+        System.out.println("Automatically booting up the initial server instance...");
+        bootNewServerInstance();
+    }
+
+    private static void handleStart() {
+        if (isRunning) {
+            System.out.println("Server is already running! Type 'stop' first if you want to restart it.");
+        } else {
+            System.out.println("Initializing clean environment and starting a new server instance...");
+            bootNewServerInstance();
+        }
+    }
+
+    private static void handleStop() {
+        if (!isRunning || currentServer == null) {
+            System.out.println("Server is already stopped.");
+        } else {
+            shutdownActiveServer();
+            System.out.println("Server successfully stopped. You can type 'start' to boot up a fresh instance.");
+        }
+    }
+
+    private static void handleExit() {
+        if (isRunning && currentServer != null) {
+            System.out.println("Stopping the active server instance before exit...");
+            shutdownActiveServer();
+        }
+    }
+
+    private static void bootNewServerInstance() {
+        currentServer = initServer();
+        currentServer.start();
+        isRunning = true;
+    }
+
+    private static void shutdownActiveServer() {
+        System.out.println("Initiating graceful shutdown...");
+        currentServer.stop();
+        currentServer = null;
+        isRunning = false;
+    }
+
+    private static Server initServer() {
+        ProductCategoryRepository categoryRepository = new ProductCategoryRepository();
+        ProductRepository productRepository = new ProductRepository();
+
+        ProductCategoryService categoryService = new ProductCategoryService(categoryRepository, productRepository);
+        ProductService productService = new ProductService(productRepository, categoryRepository);
+
+        IDecryptor serverDecryptor = new MessageDecryptor();
+        MessageEncryptor serverEncryptor = new MessageEncryptor();
+        IProcessor serverProcessor = new Processor(productService, categoryService);
+
+        return new Server(
+                5,
+                serverDecryptor,
+                2,
+                serverEncryptor,
+                3,
+                serverProcessor,
+                4,
+                10000
+        );
+    }
+}

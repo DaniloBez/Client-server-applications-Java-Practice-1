@@ -14,7 +14,7 @@ public class FakeSender implements ISender {
     private final IDecryptor clientDecryptor = new MessageDecryptor();
 
     @Override
-    public void send(byte[] message, InetAddress target) {
+    public void send(byte[] message) {
         try {
             Message responseMessage = clientDecryptor.decrypt(message);
 
@@ -23,4 +23,7 @@ public class FakeSender implements ISender {
             logger.error("Decryption error on the client: {}", e.getMessage());
         }
     }
+
+    @Override
+    public void close() {}
 }
