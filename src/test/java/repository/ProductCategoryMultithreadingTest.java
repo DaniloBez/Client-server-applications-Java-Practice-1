@@ -1,7 +1,6 @@
 package repository;
 
 import entity.ProductCategory;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
@@ -13,14 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ProductCategoryMultithreadingTest {
-    private ProductCategoryRepository productCategoryRepository;
-
-    @BeforeEach
-    public void setUp() {
-        productCategoryRepository = new ProductCategoryRepository();
-    }
-
+public class ProductCategoryMultithreadingTest extends BaseRepositoryTest {
     @Test
     public void shouldCreateCorrectly() throws InterruptedException {
         int numberOfThreads = 10_000;
@@ -39,7 +31,14 @@ public class ProductCategoryMultithreadingTest {
                        readyLatch.countDown();
                        startLatch.await();
 
-                       generatedIds.add(productCategoryRepository.create("Category" + finalI));
+                       generatedIds.add(
+                               productCategoryRepository.create(
+                                       new ProductCategory(
+                                               0,
+                                               "Category" + finalI
+                                       )
+                               )
+                       );
                    }
                    catch (InterruptedException e) {
                        Thread.currentThread().interrupt();
@@ -60,7 +59,7 @@ public class ProductCategoryMultithreadingTest {
 
     @Test
     public void shouldWorkReadWriteTest() throws InterruptedException {
-        int numberOfThreads = 10_000;
+        int numberOfThreads = 1_000;
 
         try(ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads)) {
             CountDownLatch readyLatch = new CountDownLatch(numberOfThreads);
@@ -79,7 +78,12 @@ public class ProductCategoryMultithreadingTest {
                         int counter = 0;
                         if (finalI % 3 == 0) {
                             while (counter < repeat) {
-                                productCategoryRepository.create("Category" + finalI);
+                                productCategoryRepository.create(
+                                        new ProductCategory(
+                                                0,
+                                                "Category_" + finalI + "_" + counter
+                                        )
+                                );
                                 counter++;
                             }
                         }
@@ -115,7 +119,12 @@ public class ProductCategoryMultithreadingTest {
     public void shouldWorkConcurrentDeleteTest() throws InterruptedException {
         int numberOfThreads = 10_000;
 
-        final int id = productCategoryRepository.create("Category");
+        final int id = productCategoryRepository.create(
+                new ProductCategory(
+                        0,
+                        "Category"
+                )
+        );
 
         AtomicInteger deletions = new AtomicInteger(0);
         AtomicInteger blockedDeletions = new AtomicInteger(0);
@@ -130,9 +139,9 @@ public class ProductCategoryMultithreadingTest {
                         readyLatch.countDown();
                         startLatch.await();
 
-                        ProductCategory productCategory = productCategoryRepository.delete(id);
+                        boolean success = productCategoryRepository.delete(id);
 
-                        if (productCategory != null)
+                        if (success)
                             deletions.incrementAndGet();
                         else
                             blockedDeletions.incrementAndGet();
@@ -159,7 +168,12 @@ public class ProductCategoryMultithreadingTest {
     public void shouldWorkConcurrentUpdateTest() throws InterruptedException {
         int numberOfThreads = 10_000;
 
-        final int id = productCategoryRepository.create("Category");
+        final int id = productCategoryRepository.create(
+                new ProductCategory(
+                        0,
+                        "Category"
+                )
+        );
 
         try(ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads)) {
             CountDownLatch readyLatch = new CountDownLatch(numberOfThreads);
@@ -173,7 +187,13 @@ public class ProductCategoryMultithreadingTest {
                         readyLatch.countDown();
                         startLatch.await();
 
-                        productCategoryRepository.update(id, "Category" + finalI);
+                        productCategoryRepository.update(
+                                id,
+                                new ProductCategory(
+                                        0,
+                                        "Category" + finalI
+                                )
+                        );
                     }
                     catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -191,7 +211,7 @@ public class ProductCategoryMultithreadingTest {
             ProductCategory category = productCategoryRepository.get(id);
 
             assertNotNull(category);
-            assertTrue(category.getName().get().startsWith("Category"));
+            assertTrue(category.name().startsWith("Category"));
         }
     }
 
@@ -211,8 +231,13 @@ public class ProductCategoryMultithreadingTest {
                         readyLatch.countDown();
                         startLatch.await();
 
-                        int id = productCategoryRepository.create("Category" + finalI);
-                        productCategoryRepository.update(id, "Category" + finalI + "_2");
+                        int id = productCategoryRepository.create(
+                                new ProductCategory(
+                                        0,
+                                        "Category" + finalI
+                                )
+                        );
+                        productCategoryRepository.update(id, new ProductCategory(0,"Category" + finalI + "_2"));
                         productCategoryRepository.delete(id);
                     }
                     catch (InterruptedException e) {

@@ -241,7 +241,7 @@ public class Processor implements IProcessor {
         GetByIdRequest request = objectMapper.readValue(message.getData(), GetByIdRequest.class);
 
         var category = categoryService.getCategory(request.id());
-        CategoryResponse response = new CategoryResponse(category.getId(), category.getName().get());
+        CategoryResponse response = new CategoryResponse(category.id(), category.name());
 
         return List.of( new Message(
                 message.getClientApplicationId(), message.getMessageId(), 200, message.getUserId(),
@@ -305,7 +305,7 @@ public class Processor implements IProcessor {
         var categories = categoryService.getAllCategories();
 
         var categoryResponses = categories.stream()
-                .map(c -> new CategoryResponse(c.getId(), c.getName().get()))
+                .map(c -> new CategoryResponse(c.id(), c.name()))
                 .toList();
 
         AllCategoriesResponse response = new AllCategoriesResponse(categoryResponses);
@@ -322,11 +322,11 @@ public class Processor implements IProcessor {
         var product = productService.getProduct(request.id());
 
         ProductResponse response = new ProductResponse(
-                product.getId(),
-                product.getName().get(),
-                product.getCountInStock().get(),
-                product.getPrice().get(),
-                product.getProductCategoryId().get()
+                product.id(),
+                product.name(),
+                product.countInStock(),
+                product.price(),
+                product.productCategoryId()
         );
 
         return List.of( new Message(
@@ -379,11 +379,11 @@ public class Processor implements IProcessor {
 
         var productResponses = products.stream()
                 .map(product -> new ProductResponse(
-                        product.getId(),
-                        product.getName().get(),
-                        product.getCountInStock().get(),
-                        product.getPrice().get(),
-                        product.getProductCategoryId().get()
+                        product.id(),
+                        product.name(),
+                        product.countInStock(),
+                        product.price(),
+                        product.productCategoryId()
                 ))
                 .toList();
 

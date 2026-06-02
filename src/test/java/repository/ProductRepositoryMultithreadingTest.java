@@ -1,10 +1,12 @@
 package repository;
 
 import entity.Product;
-import org.junit.jupiter.api.BeforeEach;
+import entity.ProductCategory;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -14,23 +16,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ProductRepositoryMultithreadingTest {
-    private ProductRepository productRepository;
-
-    @BeforeEach
-    public void setup() {
-        productRepository = new ProductRepository();
-    }
-
+public class ProductRepositoryMultithreadingTest extends ProductRepositoryTest {
     @Test
     public void soldOutTest() throws InterruptedException {
         int numberOfThreads = 1_000;
 
+        int categoryId = productCategoryRepository.create(new ProductCategory(0, "Category for Product"));
+
         int id = productRepository.create(
-                "Product",
-                100,
-                new BigDecimal(10),
-                1
+                new Product(
+                        0,
+                        "Product",
+                        100,
+                        new BigDecimal(10),
+                        categoryId
+                )
         );
 
         AtomicInteger numberOfSold = new AtomicInteger(0);
@@ -47,7 +47,7 @@ public class ProductRepositoryMultithreadingTest {
                         readyLatch.countDown();
                         startLatch.await();
 
-                        boolean isSuccessful = productRepository.get(id).deductStock(10);
+                        boolean isSuccessful = productRepository.deductStock(id,10);
                         if (isSuccessful)
                             numberOfSold.incrementAndGet();
                         else
@@ -66,7 +66,7 @@ public class ProductRepositoryMultithreadingTest {
 
             assertEquals(10, numberOfSold.get());
             assertEquals(990, blocked.get());
-            assertEquals(0, productRepository.get(id).getCountInStock().get());
+            assertEquals(0, productRepository.get(id).countInStock());
         }
     }
 
@@ -74,11 +74,16 @@ public class ProductRepositoryMultithreadingTest {
     public void addAndDeductTest() throws InterruptedException {
         int numberOfThreads = 1_000;
 
+        int categoryId = productCategoryRepository.create(new ProductCategory(0, "Category for Product"));
+
         int id = productRepository.create(
-                "Product",
-                10_000,
-                new BigDecimal(10),
-                1
+                new Product(
+                        0,
+                        "Product",
+                        10_000,
+                        new BigDecimal(10),
+                        categoryId
+                )
         );
 
         try(ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads)) {
@@ -94,9 +99,9 @@ public class ProductRepositoryMultithreadingTest {
                         startLatch.await();
 
                         if (finalI % 2 == 0)
-                            productRepository.get(id).deductStock(5);
+                            productRepository.deductStock(id,5);
                         else
-                            productRepository.get(id).addStock(5);
+                            productRepository.addStock(id,5);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     } finally {
@@ -109,7 +114,7 @@ public class ProductRepositoryMultithreadingTest {
             startLatch.countDown();
             doneLatch.await();
 
-            assertEquals(10_000, productRepository.get(id).getCountInStock().get());
+            assertEquals(10_000, productRepository.get(id).countInStock());
         }
     }
 
@@ -117,11 +122,16 @@ public class ProductRepositoryMultithreadingTest {
     public void concurrentUpdateTest() throws InterruptedException {
         int numberOfThreads = 1_000;
 
+        int categoryId = productCategoryRepository.create(new ProductCategory(0, "Category for Product"));
+
         int id = productRepository.create(
-                "Product",
-                10_000,
-                new BigDecimal(10),
-                1
+                new Product(
+                        0,
+                        "Product",
+                        10_000,
+                        new BigDecimal(10),
+                        categoryId
+                )
         );
 
         try(ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads)) {
@@ -136,7 +146,7 @@ public class ProductRepositoryMultithreadingTest {
                         readyLatch.countDown();
                         startLatch.await();
 
-                        productRepository.get(id).setPrice(new BigDecimal(finalI));
+                        productRepository.setProductPrice(id, new BigDecimal(finalI));
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     } finally {
@@ -149,7 +159,7 @@ public class ProductRepositoryMultithreadingTest {
             startLatch.countDown();
             doneLatch.await();
 
-            BigDecimal price = productRepository.get(id).getPrice().get();
+            BigDecimal price = productRepository.get(id).price();
             assertNotNull(price);
             assertTrue(price.compareTo(new BigDecimal(0)) > 0 &&  price.compareTo(new BigDecimal(1_001)) < 0);
         }
@@ -159,6 +169,13 @@ public class ProductRepositoryMultithreadingTest {
     public void shouldCreateCorrectly() throws InterruptedException {
         int numberOfThreads = 10_000;
         Set<Integer> generatedIds = ConcurrentHashMap.newKeySet();
+
+        List<Integer> categoryIds = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            int id = productCategoryRepository.create(new ProductCategory(0, "Category for Product" + i));
+            categoryIds.add(id);
+        }
+
 
         try(ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads)) {
             CountDownLatch readyLatch = new CountDownLatch(numberOfThreads);
@@ -173,15 +190,21 @@ public class ProductRepositoryMultithreadingTest {
                         startLatch.await();
 
                         int id = productRepository.create(
-                                "Product" + finalI,
-                                100,
-                                new BigDecimal(15),
-                                finalI % 5
+                                new Product(
+                                        0,
+                                        "Product" + finalI,
+                                        100,
+                                        new BigDecimal(15),
+                                        categoryIds.get(finalI % 5)
+                                )
                         );
                         generatedIds.add(id);
                     }
                     catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
+                    }
+                    catch (Exception e) {
+                        e.printStackTrace();
                     }
                     finally {
                         doneLatch.countDown();
@@ -201,6 +224,12 @@ public class ProductRepositoryMultithreadingTest {
     public void shouldWorkReadWriteStreamTest() throws InterruptedException {
         int numberOfThreads = 1_000;
 
+        List<Integer> categoryIds = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            int id = productCategoryRepository.create(new ProductCategory(0, "Category for Product" + i));
+            categoryIds.add(id);
+        }
+
         try(ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads)) {
             CountDownLatch readyLatch = new CountDownLatch(numberOfThreads);
             CountDownLatch startLatch = new CountDownLatch(1);
@@ -218,7 +247,15 @@ public class ProductRepositoryMultithreadingTest {
                         int counter = 0;
                         if (finalI % 3 == 0) {
                             while (counter < repeat) {
-                                productRepository.create("Prod", 10, new BigDecimal(1), finalI % 10);
+                                int id = productRepository.create(
+                                        new Product(
+                                                0,
+                                                "Prod_" + finalI + "_" + counter,
+                                                10,
+                                                new BigDecimal(1),
+                                                categoryIds.get(finalI % 10)
+                                        )
+                                );
                                 counter++;
                             }
                         }
@@ -230,14 +267,16 @@ public class ProductRepositoryMultithreadingTest {
                         }
                         else {
                             while (counter < repeat) {
-                                productRepository.getAllByCategoryId(finalI % 10);
-                                productRepository.hasProductsInCategory(finalI % 10);
+                                productRepository.getAllByCategoryId(categoryIds.get(finalI % 10));
                                 counter++;
                             }
                         }
                     }
                     catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
+                    }
+                    catch (Exception e) {
+                        e.printStackTrace();
                     }
                     finally {
                         doneLatch.countDown();
@@ -255,7 +294,17 @@ public class ProductRepositoryMultithreadingTest {
     public void shouldWorkConcurrentDeleteTest() throws InterruptedException {
         int numberOfThreads = 1_000;
 
-        int id = productRepository.create("Product", 100, new BigDecimal(50), 1);
+        int categoryId = productCategoryRepository.create(new ProductCategory(0, "Category for Product"));
+
+        int id = productRepository.create(
+                new Product(
+                        0,
+                        "Product",
+                        100,
+                        new BigDecimal(50),
+                        categoryId
+                )
+        );
 
         AtomicInteger successfulDeletions = new AtomicInteger(0);
         AtomicInteger failedDeletions = new AtomicInteger(0);
@@ -271,9 +320,9 @@ public class ProductRepositoryMultithreadingTest {
                         readyLatch.countDown();
                         startLatch.await();
 
-                        Product deletedProduct = productRepository.delete(id);
+                        boolean success = productRepository.delete(id);
 
-                        if (deletedProduct != null)
+                        if (success)
                             successfulDeletions.incrementAndGet();
                         else
                             failedDeletions.incrementAndGet();

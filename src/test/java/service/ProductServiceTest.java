@@ -12,6 +12,7 @@ import repository.ProductCategoryRepository;
 import repository.ProductRepository;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -32,18 +33,33 @@ public class ProductServiceTest {
 
     @BeforeEach
     public void setUp() {
-        testProduct = new Product("Test Product", 100, new BigDecimal("50.0"), 1);
+        testProduct = new Product(1, "Test Product", 100, new BigDecimal("50.0"), 1);
     }
 
     @Test
     public void shouldCreateProductSuccessfully() {
-        when(categoryRepository.get(1)).thenReturn(new ProductCategory("Test Category"));
-        when(productRepository.create("New Product", 10, new BigDecimal("20.0"), 1)).thenReturn(5);
+        when(categoryRepository.get(1)).thenReturn(new ProductCategory(1, "Test Category"));
+
+        Product expectedProductToCreate = new Product(0, "New Product", 10, new BigDecimal("20.0"), 1);
+        when(productRepository.create(expectedProductToCreate)).thenReturn(5);
 
         int id = productService.createProduct("New Product", 10, new BigDecimal("20.0"), 1);
 
         assertEquals(5, id);
-        verify(productRepository, times(1)).create(anyString(), anyInt(), any(), anyInt());
+        verify(productRepository, times(1)).create(expectedProductToCreate);
+    }
+
+    @Test
+    public void shouldThrowExceptionWhenCreatingDuplicateProduct() {
+        when(categoryRepository.get(1)).thenReturn(new ProductCategory(1, "Test Category"));
+
+        SQLException sqlException = new SQLException("Duplicate key", "23505");
+        when(productRepository.create(any(Product.class))).thenThrow(new RuntimeException(sqlException));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> productService.createProduct("New Product", 10, new BigDecimal("20.0"), 1));
+
+        assertTrue(exception.getMessage().contains("already exists"));
     }
 
     @Test
@@ -54,12 +70,12 @@ public class ProductServiceTest {
                 () -> productService.createProduct("New Product", 10, new BigDecimal("20.0"), 99));
 
         assertTrue(exception.getMessage().contains("the group with ID 99 does not exist"));
-        verify(productRepository, never()).create(anyString(), anyInt(), any(), anyInt());
+        verify(productRepository, never()).create(any(Product.class));
     }
 
     @Test
     public void shouldThrowExceptionWhenCreatingWithNegativeStock() {
-        when(categoryRepository.get(1)).thenReturn(new ProductCategory("Test Category"));
+        when(categoryRepository.get(1)).thenReturn(new ProductCategory(1, "Test Category"));
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> productService.createProduct("New Product", -5, new BigDecimal("20.0"), 1));
@@ -69,11 +85,9 @@ public class ProductServiceTest {
 
     @Test
     public void shouldSetPriceSuccessfully() {
-        when(productRepository.get(testProduct.getId())).thenReturn(testProduct);
+        productService.setProductPrice(testProduct.id(), new BigDecimal("99.99"));
 
-        productService.setProductPrice(testProduct.getId(), new BigDecimal("99.99"));
-
-        assertEquals(new BigDecimal("99.99"), testProduct.getPrice().get());
+        verify(productRepository, times(1)).setProductPrice(testProduct.id(), new BigDecimal("99.99"));
     }
 
     @Test
@@ -82,40 +96,39 @@ public class ProductServiceTest {
                 () -> productService.setProductPrice(1, new BigDecimal("-10.0")));
 
         assertEquals("A price cannot be negative", exception.getMessage());
-        verify(productRepository, never()).get(anyInt());
+        verify(productRepository, never()).setProductPrice(anyInt(), any());
     }
 
     @Test
     public void shouldDeductStockSuccessfully() {
-        when(productRepository.get(testProduct.getId())).thenReturn(testProduct);
+        when(productRepository.deductStock(testProduct.id(), 20)).thenReturn(true);
 
-        productService.deductStock(testProduct.getId(), 20);
+        productService.deductStock(testProduct.id(), 20);
 
-        assertEquals(80, testProduct.getCountInStock().get());
+        verify(productRepository, times(1)).deductStock(testProduct.id(), 20);
     }
 
     @Test
     public void shouldThrowExceptionWhenDeductingMoreThanInStock() {
-        when(productRepository.get(testProduct.getId())).thenReturn(testProduct);
+        when(productRepository.deductStock(testProduct.id(), 150)).thenReturn(false);
 
         IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> productService.deductStock(testProduct.getId(), 150));
+                () -> productService.deductStock(testProduct.id(), 150));
 
         assertTrue(exception.getMessage().contains("There are not enough items in stock"));
-        assertEquals(100, testProduct.getCountInStock().get());
     }
 
     @Test
     public void shouldGetProductsByCategorySuccessfully() {
         int categoryId = 1;
-        when(categoryRepository.get(categoryId)).thenReturn(new ProductCategory("Test Category"));
+        when(categoryRepository.get(categoryId)).thenReturn(new ProductCategory(1, "Test Category"));
         when(productRepository.getAllByCategoryId(categoryId)).thenReturn(List.of(testProduct));
 
         List<Product> products = productService.getProductsByCategory(categoryId);
 
         assertNotNull(products);
         assertEquals(1, products.size());
-        assertEquals(testProduct.getId(), products.getFirst().getId());
+        assertEquals(testProduct.id(), products.getFirst().id());
 
         verify(categoryRepository, times(1)).get(categoryId);
         verify(productRepository, times(1)).getAllByCategoryId(categoryId);

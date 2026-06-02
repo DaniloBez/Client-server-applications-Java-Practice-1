@@ -162,7 +162,7 @@ public class ProcessorTest {
 
     @Test
     public void shouldProcessGetCategory() {
-        ProductCategory category = new ProductCategory("Food");
+        ProductCategory category = new ProductCategory(0,"Food");
         when(categoryService.getCategory(1)).thenReturn(category);
 
         List<Message> responses = processor.process(createRequest(7, "{\"id\":1}"));
@@ -174,8 +174,8 @@ public class ProcessorTest {
 
     @Test
     public void shouldProcessGetAllCategories() {
-        ProductCategory cat1 = new ProductCategory("Cat1");
-        ProductCategory cat2 = new ProductCategory("Cat2");
+        ProductCategory cat1 = new ProductCategory(0,"Cat1");
+        ProductCategory cat2 = new ProductCategory(0,"Cat2");
         when(categoryService.getAllCategories()).thenReturn(List.of(cat1, cat2));
 
         List<Message> responses = processor.process(createRequest(10, "{}"));
@@ -199,7 +199,7 @@ public class ProcessorTest {
 
     @Test
     public void shouldProcessGetProduct() {
-        Product mockProduct = new Product("Phone", 10, new BigDecimal("100"), 1);
+        Product mockProduct = new Product(0,"Phone", 10, new BigDecimal("100"), 1);
         when(productService.getProduct(1)).thenReturn(mockProduct);
 
         List<Message> responses = processor.process(createRequest(11, "{\"id\":1}"));
@@ -211,7 +211,7 @@ public class ProcessorTest {
 
     @Test
     public void shouldProcessGetProductsByCategory() {
-        Product mockProduct = new Product("Phone", 10, new BigDecimal("100"), 1);
+        Product mockProduct = new Product(0,"Phone", 10, new BigDecimal("100"), 1);
         when(productService.getProductsByCategory(1)).thenReturn(List.of(mockProduct));
 
         List<Message> responses = processor.process(createRequest(13, "{\"id\":1}"));
