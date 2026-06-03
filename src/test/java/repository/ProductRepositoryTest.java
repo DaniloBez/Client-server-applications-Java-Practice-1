@@ -1,11 +1,14 @@
 package repository;
 
+import dto.request.ProductFilterDTO;
+import dto.request.SearchProductsRequest;
+import dto.request.SortDTO;
+import dto.response.PageResponse;
 import entity.Product;
 import entity.ProductCategory;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
@@ -88,56 +91,33 @@ public class ProductRepositoryTest extends BaseRepositoryTest {
                 )
         );
 
-        assertFalse(productRepository.getAllByCategoryId(categoryId1).isEmpty());
-        assertFalse(productRepository.getAllByCategoryId(categoryId2).isEmpty());
-        assertTrue(productRepository.getAllByCategoryId(categoryId2 + categoryId1).isEmpty());
+        assertFalse(productRepository.searchProducts(new SearchProductsRequest(new ProductFilterDTO(null, null, null, categoryId1), null, null)).items().isEmpty());
+        assertFalse(productRepository.searchProducts(new SearchProductsRequest(new ProductFilterDTO(null, null, null, categoryId2), null, null)).items().isEmpty());
+        assertTrue(productRepository.searchProducts(new SearchProductsRequest(new ProductFilterDTO(null, null, null, categoryId1 + categoryId2), null, null)).items().isEmpty());
     }
 
     @Test
-    public void shouldFindAllInCategory() {
-        int categoryId1 = productCategoryRepository.create(new ProductCategory(0, "Category for Product1"));
-        int categoryId2 = productCategoryRepository.create(new ProductCategory(0, "Category for Product2"));
-        productRepository.create(
-                new Product(
-                        0,
-                        "product1",
-                        10,
-                        new BigDecimal(100),
-                        categoryId1
-                )
-        );
+    public void shouldSearchAndFilterProducts() {
+        int cat1 = productCategoryRepository.create(new ProductCategory(0, "Laptops"));
+        int cat2 = productCategoryRepository.create(new ProductCategory(0, "Phones"));
 
-        productRepository.create(
-                new Product(
-                        0,
-                        "product2",
-                        10,
-                        new BigDecimal(100),
-                        categoryId1
-                )
-        );
+        productRepository.create(new Product(0, "MacBook Pro", 10, new BigDecimal("2000.0"), cat1));
+        productRepository.create(new Product(0, "MacBook Air", 15, new BigDecimal("1000.0"), cat1));
+        productRepository.create(new Product(0, "iPhone 15", 50, new BigDecimal("1000.0"), cat2));
 
-        productRepository.create(
-                new Product(
-                        0,
-                        "product3",
-                        10,
-                        new BigDecimal(100),
-                        categoryId2
-                )
-        );
+        SearchProductsRequest req1 = new SearchProductsRequest(new ProductFilterDTO("MacBook", null, null, cat1), null, null);
+        PageResponse<Product> res1 = productRepository.searchProducts(req1);
+        assertEquals(2, res1.totalElements());
 
-        List<Product> products = productRepository.getAllByCategoryId(categoryId1);
-        assertNotNull(products);
-        assertEquals(2, products.size());
+        SearchProductsRequest req2 = new SearchProductsRequest(new ProductFilterDTO(null, new BigDecimal("1500.0"), null, null), null, null);
+        PageResponse<Product> res2 = productRepository.searchProducts(req2);
+        assertEquals(1, res2.totalElements());
+        assertEquals("MacBook Pro", res2.items().getFirst().name());
 
-        products = productRepository.getAllByCategoryId(categoryId2);
-        assertNotNull(products);
-        assertEquals(1, products.size());
-
-        products = productRepository.getAllByCategoryId(categoryId2 + categoryId1);
-        assertNotNull(products);
-        assertEquals(0, products.size());
+        SearchProductsRequest req3 = new SearchProductsRequest(null, null, new SortDTO("price", "DESC"));
+        PageResponse<Product> res3 = productRepository.searchProducts(req3);
+        assertEquals(3, res3.totalElements());
+        assertEquals("MacBook Pro", res3.items().getFirst().name());
     }
 
     @Test

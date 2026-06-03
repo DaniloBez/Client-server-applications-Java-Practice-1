@@ -1,5 +1,8 @@
 package service;
 
+import dto.request.SearchCategoriesRequest;
+import dto.request.SearchProductsRequest;
+import dto.response.PageResponse;
 import entity.Product;
 import entity.ProductCategory;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,7 +90,7 @@ public class ProductCategoryServiceTest {
 
     @Test
     public void shouldDeleteCategorySuccessfully() {
-        when(productRepository.getAllByCategoryId(1)).thenReturn(List.of());
+        when(productRepository.searchProducts(any(SearchProductsRequest.class))).thenReturn(new PageResponse<>(List.of(), 0, 0, 1));
         when(categoryRepository.delete(1)).thenReturn(true);
 
         boolean result = categoryService.deleteCategory(1);
@@ -99,12 +102,29 @@ public class ProductCategoryServiceTest {
     @Test
     public void shouldThrowExceptionWhenDeletingCategoryWithProducts() {
         Product dummyProduct = new Product(1, "Prod", 10, new BigDecimal("10.0"), 1);
-        when(productRepository.getAllByCategoryId(1)).thenReturn(List.of(dummyProduct));
+
+        when(productRepository.searchProducts(any(SearchProductsRequest.class)))
+                .thenReturn(new PageResponse<>(List.of(dummyProduct), 1, 1, 1));
 
         IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> categoryService.deleteCategory(1));
 
         assertEquals("You cannot delete the group: it still contains items", exception.getMessage());
         verify(categoryRepository, never()).delete(anyInt());
+    }
+
+    @Test
+    public void shouldSearchCategoriesSuccessfully() {
+        SearchCategoriesRequest request = new SearchCategoriesRequest(null, null, null);
+        PageResponse<ProductCategory> expectedResponse = new PageResponse<>(List.of(testCategory), 1, 1, 1);
+
+        when(categoryRepository.searchCategories(request)).thenReturn(expectedResponse);
+
+        PageResponse<ProductCategory> result = categoryService.searchCategories(request);
+
+        assertNotNull(result);
+        assertEquals(1, result.totalElements());
+        assertEquals("Test Category", result.items().getFirst().name());
+        verify(categoryRepository, times(1)).searchCategories(request);
     }
 }

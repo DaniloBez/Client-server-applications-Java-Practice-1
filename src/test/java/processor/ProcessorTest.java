@@ -1,6 +1,7 @@
 package processor;
 
 import dto.Message;
+import dto.response.PageResponse;
 import entity.Product;
 import entity.ProductCategory;
 import org.junit.jupiter.api.Test;
@@ -173,17 +174,23 @@ public class ProcessorTest {
     }
 
     @Test
-    public void shouldProcessGetAllCategories() {
+    public void shouldProcessSearchCategories() {
         ProductCategory cat1 = new ProductCategory(0,"Cat1");
         ProductCategory cat2 = new ProductCategory(0,"Cat2");
-        when(categoryService.getAllCategories()).thenReturn(List.of(cat1, cat2));
+        PageResponse<ProductCategory> mockResponse = new PageResponse<>(List.of(cat1, cat2), 2, 1, 1);
+
+        when(categoryService.searchCategories(any())).thenReturn(mockResponse);
 
         List<Message> responses = processor.process(createRequest(10, "{}"));
 
         assertEquals(1, responses.size());
         assertEquals(200, responses.getFirst().getCommandId());
-        assertTrue(responses.getFirst().getData().contains("Cat1"));
-        assertTrue(responses.getFirst().getData().contains("Cat2"));
+
+        String jsonResponse = responses.getFirst().getData();
+        assertTrue(jsonResponse.contains("Cat1"));
+        assertTrue(jsonResponse.contains("Cat2"));
+        assertTrue(jsonResponse.contains("totalElements"));
+        assertTrue(jsonResponse.contains("items"));
     }
 
     @Test
@@ -210,15 +217,20 @@ public class ProcessorTest {
     }
 
     @Test
-    public void shouldProcessGetProductsByCategory() {
+    public void shouldProcessSearchProducts() {
         Product mockProduct = new Product(0,"Phone", 10, new BigDecimal("100"), 1);
-        when(productService.getProductsByCategory(1)).thenReturn(List.of(mockProduct));
+        PageResponse<Product> mockResponse = new PageResponse<>(List.of(mockProduct), 1, 1, 1);
 
-        List<Message> responses = processor.process(createRequest(13, "{\"id\":1}"));
+        when(productService.searchProducts(any())).thenReturn(mockResponse);
+
+        List<Message> responses = processor.process(createRequest(13, "{\"filter\":{\"categoryId\":1}}"));
 
         assertEquals(1, responses.size());
         assertEquals(200, responses.getFirst().getCommandId());
-        assertTrue(responses.getFirst().getData().contains("Phone"));
+
+        String jsonResponse = responses.getFirst().getData();
+        assertTrue(jsonResponse.contains("Phone"));
+        assertTrue(jsonResponse.contains("totalElements"));
     }
 
     @Test

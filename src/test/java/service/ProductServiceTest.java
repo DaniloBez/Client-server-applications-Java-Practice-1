@@ -1,5 +1,7 @@
 package service;
 
+import dto.request.SearchProductsRequest;
+import dto.response.PageResponse;
 import entity.Product;
 import entity.ProductCategory;
 import org.junit.jupiter.api.BeforeEach;
@@ -119,32 +121,18 @@ public class ProductServiceTest {
     }
 
     @Test
-    public void shouldGetProductsByCategorySuccessfully() {
-        int categoryId = 1;
-        when(categoryRepository.get(categoryId)).thenReturn(new ProductCategory(1, "Test Category"));
-        when(productRepository.getAllByCategoryId(categoryId)).thenReturn(List.of(testProduct));
+    public void shouldSearchProductsSuccessfully() {
+        SearchProductsRequest request = new SearchProductsRequest(null, null, null);
+        PageResponse<Product> expectedResponse = new PageResponse<>(List.of(testProduct), 1, 1, 1);
 
-        List<Product> products = productService.getProductsByCategory(categoryId);
+        when(productRepository.searchProducts(request)).thenReturn(expectedResponse);
 
-        assertNotNull(products);
-        assertEquals(1, products.size());
-        assertEquals(testProduct.id(), products.getFirst().id());
+        PageResponse<Product> result = productService.searchProducts(request);
 
-        verify(categoryRepository, times(1)).get(categoryId);
-        verify(productRepository, times(1)).getAllByCategoryId(categoryId);
-    }
+        assertNotNull(result);
+        assertEquals(1, result.totalElements());
+        assertEquals(testProduct.id(), result.items().getFirst().id());
 
-    @Test
-    public void shouldThrowExceptionWhenGettingProductsForNonExistentCategory() {
-        int categoryId = 99;
-        when(categoryRepository.get(categoryId)).thenReturn(null);
-
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> productService.getProductsByCategory(categoryId));
-
-        assertTrue(exception.getMessage().contains("the group with ID 99 does not exist"));
-
-        verify(categoryRepository, times(1)).get(categoryId);
-        verify(productRepository, never()).getAllByCategoryId(anyInt());
+        verify(productRepository, times(1)).searchProducts(request);
     }
 }

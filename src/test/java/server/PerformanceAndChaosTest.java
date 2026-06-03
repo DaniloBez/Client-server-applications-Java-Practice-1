@@ -39,7 +39,7 @@ public class PerformanceAndChaosTest extends BaseIntegrationTest {
             payload = "{\"id\":" + testProductId + "}";
         } else {
             commandId = 13;
-            payload = "{\"id\":" + testCategoryId + "}";
+            payload = "{\"filter\":{\"categoryId\":" + testCategoryId + "}}";
         }
 
         return new Message(

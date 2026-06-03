@@ -1,11 +1,15 @@
 package service;
 
+import dto.request.PaginationDTO;
+import dto.request.ProductFilterDTO;
+import dto.request.SearchCategoriesRequest;
+import dto.request.SearchProductsRequest;
+import dto.response.PageResponse;
 import entity.ProductCategory;
 import repository.ProductCategoryRepository;
 import repository.ProductRepository;
 
 import java.sql.SQLException;
-import java.util.List;
 
 public class ProductCategoryService {
     private final ProductCategoryRepository categoryRepository;
@@ -54,14 +58,20 @@ public class ProductCategoryService {
     }
 
     public boolean deleteCategory(int id) {
-        if (!productRepository.getAllByCategoryId(id).isEmpty())
+        SearchProductsRequest checkRequest = new SearchProductsRequest(
+                new ProductFilterDTO(null, null, null, id),
+                new PaginationDTO(1, 1),
+                null
+        );
+
+        if (productRepository.searchProducts(checkRequest).totalElements() > 0)
             throw new IllegalStateException("You cannot delete the group: it still contains items");
 
         return categoryRepository.delete(id);
     }
 
-    public List<ProductCategory> getAllCategories() {
-        return categoryRepository.getAll();
+    public PageResponse<ProductCategory> searchCategories(SearchCategoriesRequest request) {
+        return categoryRepository.searchCategories(request);
     }
 
     private boolean isUniqueConstraintViolation(RuntimeException e) {

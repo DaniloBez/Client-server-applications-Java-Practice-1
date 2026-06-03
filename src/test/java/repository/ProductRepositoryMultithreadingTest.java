@@ -1,5 +1,7 @@
 package repository;
 
+import dto.request.ProductFilterDTO;
+import dto.request.SearchProductsRequest;
 import entity.Product;
 import entity.ProductCategory;
 import org.junit.jupiter.api.Test;
@@ -247,7 +249,7 @@ public class ProductRepositoryMultithreadingTest extends ProductRepositoryTest {
                         int counter = 0;
                         if (finalI % 3 == 0) {
                             while (counter < repeat) {
-                                int id = productRepository.create(
+                                productRepository.create(
                                         new Product(
                                                 0,
                                                 "Prod_" + finalI + "_" + counter,
@@ -267,7 +269,11 @@ public class ProductRepositoryMultithreadingTest extends ProductRepositoryTest {
                         }
                         else {
                             while (counter < repeat) {
-                                productRepository.getAllByCategoryId(categoryIds.get(finalI % 10));
+                                productRepository.searchProducts(new SearchProductsRequest(
+                                        new ProductFilterDTO(null, null, null, categoryIds.get(finalI % 10)),
+                                        null,
+                                        null
+                                ));
                                 counter++;
                             }
                         }

@@ -2,6 +2,8 @@ package repository;
 
 import utils.DBConnectionPool;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.List;
 
 public abstract class AbstractRepository<Entity> {
@@ -19,5 +21,9 @@ public abstract class AbstractRepository<Entity> {
 
     public abstract Entity get(int id);
 
-    public abstract List<Entity> getAll();
+    protected void setParameters(PreparedStatement stmt, List<Object> params) throws SQLException {
+        for (int i = 0; i < params.size(); i++) {
+            stmt.setObject(i + 1, params.get(i));
+        }
+    }
 }

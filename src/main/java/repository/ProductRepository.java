@@ -1,7 +1,13 @@
 package repository;
 
+import dto.request.PaginationDTO;
+import dto.request.ProductFilterDTO;
+import dto.request.SearchProductsRequest;
+import dto.request.SortDTO;
+import dto.response.PageResponse;
 import entity.Product;
 import utils.DBConnectionPool;
+import utils.SqlQueryBuilder;
 
 import java.math.BigDecimal;
 import java.sql.*;
@@ -109,17 +115,6 @@ public class ProductRepository extends AbstractRepository<Product> {
         return null;
     }
 
-    @Override
-    public List<Product> getAll() {
-        String sql = "SELECT * FROM product";
-        return fetchList(sql, null);
-    }
-
-    public List<Product> getAllByCategoryId(int categoryId) {
-        String sql = "SELECT * FROM product WHERE product_category_id=?";
-        return fetchList(sql, categoryId);
-    }
-
     public void setProductPrice(int id, BigDecimal price) {
         String sql = "UPDATE product SET price=? WHERE id=?";
         Connection conn = null;
@@ -191,28 +186,86 @@ public class ProductRepository extends AbstractRepository<Product> {
         }
     }
 
+    public PageResponse<Product> searchProducts(SearchProductsRequest request) {
+        ProductFilterDTO filter = request != null ? request.filter() : null;
+        PaginationDTO pagination = request != null ? request.pagination() : null;
+        SortDTO sort = request != null ? request.sort() : null;
 
-    private List<Product> fetchList(String sql, Integer categoryIdParam) {
+        SqlQueryBuilder dataBuilder = new SqlQueryBuilder("SELECT * FROM product");
+        SqlQueryBuilder countBuilder = new SqlQueryBuilder("SELECT COUNT(*) FROM product");
+
+        if (filter != null) {
+            dataBuilder.whereILike("name", filter.nameLike())
+                    .whereGreaterOrEqual("price", filter.minPrice())
+                    .whereLessOrEqual("price", filter.maxPrice())
+                    .whereEqual("product_category_id", filter.categoryId());
+
+            countBuilder.whereILike("name", filter.nameLike())
+                    .whereGreaterOrEqual("price", filter.minPrice())
+                    .whereLessOrEqual("price", filter.maxPrice())
+                    .whereEqual("product_category_id", filter.categoryId());
+        }
+
+        if (sort != null && sort.column() != null) {
+            if ("DESC".equalsIgnoreCase(sort.direction()))
+                dataBuilder.orderByDesc(sort.column());
+            else
+                dataBuilder.orderByAsc(sort.column());
+        } else {
+            dataBuilder.orderByAsc("id");
+        }
+
+        if (pagination != null) {
+            dataBuilder.paginate(pagination.page(), pagination.size());
+        }
+
+        List<Product> products = fetchListWithBuilder(dataBuilder.getSql(), dataBuilder.getParams());
+        int totalElements = fetchCountWithBuilder(countBuilder.getSql(), countBuilder.getParams());
+
+        int currentPage = (pagination != null && pagination.page() != null) ? pagination.page() : 1;
+        int pageSize = (pagination != null && pagination.size() != null) ? pagination.size() : Math.max(totalElements, 1);
+        int totalPages = pageSize > 0 ? (int) Math.ceil((double) totalElements / pageSize) : 0;
+
+        return new PageResponse<>(products, totalElements, totalPages, currentPage);
+    }
+
+    private List<Product> fetchListWithBuilder(String sql, List<Object> params) {
         List<Product> products = new ArrayList<>();
         Connection conn = null;
-
         try {
             conn = dbConnectionPool.getConnection();
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                if (categoryIdParam != null)
-                    ps.setInt(1, categoryIdParam);
-
+                setParameters(ps, params);
                 try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next())
+                    while (rs.next()) {
                         products.add(mapResultSetToProduct(rs));
+                    }
                 }
             }
         } catch (SQLException | InterruptedException e) {
-            throw new RuntimeException("Error fetching products list", e);
+            throw new RuntimeException("Error searching products", e);
         } finally {
             dbConnectionPool.releaseConnection(conn);
         }
         return products;
+    }
+
+    private int fetchCountWithBuilder(String sql, List<Object> params) {
+        Connection conn = null;
+        try {
+            conn = dbConnectionPool.getConnection();
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                setParameters(ps, params);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) return rs.getInt(1);
+                }
+            }
+        } catch (SQLException | InterruptedException e) {
+            throw new RuntimeException("Error counting products", e);
+        } finally {
+            dbConnectionPool.releaseConnection(conn);
+        }
+        return 0;
     }
 
     private Product mapResultSetToProduct(ResultSet rs) throws SQLException {

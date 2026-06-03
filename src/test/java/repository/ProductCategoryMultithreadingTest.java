@@ -1,5 +1,6 @@
 package repository;
 
+import dto.request.SearchCategoriesRequest;
 import entity.ProductCategory;
 import org.junit.jupiter.api.Test;
 
@@ -95,7 +96,7 @@ public class ProductCategoryMultithreadingTest extends BaseRepositoryTest {
                         }
                         else {
                             while (counter < repeat) {
-                                productCategoryRepository.getAll();
+                                productCategoryRepository.searchCategories(new SearchCategoriesRequest(null, null, null));
                                 counter++;
                             }
                         }
@@ -253,7 +254,7 @@ public class ProductCategoryMultithreadingTest extends BaseRepositoryTest {
             startLatch.countDown();
             doneLatch.await();
 
-            assertEquals(0, productCategoryRepository.getAll().size());
+            assertEquals(0, productCategoryRepository.searchCategories(new SearchCategoriesRequest(null, null, null)).items().size());
         }
     }
 }

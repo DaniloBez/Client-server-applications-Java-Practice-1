@@ -1,12 +1,13 @@
 package service;
 
+import dto.request.SearchProductsRequest;
+import dto.response.PageResponse;
 import entity.Product;
 import repository.ProductCategoryRepository;
 import repository.ProductRepository;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
-import java.util.List;
 
 public class ProductService {
     private final ProductRepository productRepository;
@@ -75,11 +76,8 @@ public class ProductService {
         return productRepository.delete(productId);
     }
 
-    public List<Product> getProductsByCategory(int categoryId) {
-        if (categoryRepository.get(categoryId) == null)
-            throw new IllegalArgumentException("Unable to get products: the group with ID " + categoryId + " does not exist");
-
-        return productRepository.getAllByCategoryId(categoryId);
+    public PageResponse<Product> searchProducts(SearchProductsRequest request) {
+        return productRepository.searchProducts(request);
     }
 
     private boolean isUniqueConstraintViolation(RuntimeException e) {
