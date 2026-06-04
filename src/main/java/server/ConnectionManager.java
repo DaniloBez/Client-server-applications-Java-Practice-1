@@ -19,7 +19,6 @@ import java.util.function.Consumer;
 public class ConnectionManager {
     private static final Logger logger = LoggerFactory.getLogger(ConnectionManager.class);
 
-    public static final String BROADCAST_ID = "BROADCAST";
     private static final long UDP_TIMEOUT_MS = 15000;
 
     private final ConcurrentHashMap<String, ISender> activeConnections = new ConcurrentHashMap<>();

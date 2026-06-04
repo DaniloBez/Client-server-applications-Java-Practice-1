@@ -1,6 +1,7 @@
 import decryptor.IDecryptor;
 import decryptor.MessageDecryptor;
 import encryptor.MessageEncryptor;
+import org.flywaydb.core.Flyway;
 import processor.IProcessor;
 import processor.Processor;
 import repository.ProductCategoryRepository;
@@ -8,6 +9,7 @@ import repository.ProductRepository;
 import server.Server;
 import service.ProductCategoryService;
 import service.ProductService;
+import utils.DBConnectionPool;
 
 import java.util.Scanner;
 
@@ -15,10 +17,19 @@ public class ServerMain {
     private static Server currentServer = null;
     private static boolean isRunning = false;
 
+    private final static String host = "localhost";
+    private final static String port = System.getenv("DB_PORT");
+    private final static String dbName = System.getenv("DB_NAME");
+    private final static String url = String.format("jdbc:postgresql://%s:%s/%s", host, port, dbName);
+
+    private final static String user = System.getenv("DB_USER");
+    private final static String password = System.getenv("DB_PASSWORD");
+
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
         printWelcomeMessage();
+        migrate();
         autoStartServer();
 
         label:
@@ -42,6 +53,16 @@ public class ServerMain {
         }
 
         System.out.println("The main branch has been completed. Application closed.");
+    }
+
+    private static void migrate() {
+        Flyway flyway = Flyway.configure()
+                .dataSource(url, user, password)
+                .load();
+
+        flyway.migrate();
+
+        System.out.println("Flyway has been migrated.");
     }
 
     private static void printWelcomeMessage() {
@@ -93,8 +114,10 @@ public class ServerMain {
     }
 
     private static Server initServer() {
-        ProductCategoryRepository categoryRepository = new ProductCategoryRepository();
-        ProductRepository productRepository = new ProductRepository();
+        DBConnectionPool dbConnectionPool = new DBConnectionPool(10, url, user, password);
+
+        ProductCategoryRepository categoryRepository = new ProductCategoryRepository(dbConnectionPool);
+        ProductRepository productRepository = new ProductRepository(dbConnectionPool);
 
         ProductCategoryService categoryService = new ProductCategoryService(categoryRepository, productRepository);
         ProductService productService = new ProductService(productRepository, categoryRepository);

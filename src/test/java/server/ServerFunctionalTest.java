@@ -53,7 +53,7 @@ public class ServerFunctionalTest extends BaseIntegrationTest{
             assertEquals(message.getMessageId(), outputMessage.getMessageId());
             assertEquals(message.getUserId(), outputMessage.getUserId());
             assertEquals(200, outputMessage.getCommandId());
-            String expectedJson = String.format("{\"categories\":[{\"id\":%d,\"name\":\"Electronics\"}]}", testCategoryId);
+            String expectedJson = String.format("{\"items\":[{\"id\":%d,\"name\":\"Electronics\"}],\"totalElements\":1,\"totalPages\":1,\"currentPage\":1}", testCategoryId);
             assertEquals(expectedJson, outputMessage.getData());
         } finally {
             server.stop();
@@ -92,7 +92,7 @@ public class ServerFunctionalTest extends BaseIntegrationTest{
             assertEquals(message.getMessageId(), outputMessage.getMessageId());
             assertEquals(message.getUserId(), outputMessage.getUserId());
             assertEquals(200, outputMessage.getCommandId());
-            String expectedJson = String.format("{\"categories\":[{\"id\":%d,\"name\":\"Electronics\"}]}", testCategoryId);
+            String expectedJson = String.format("{\"items\":[{\"id\":%d,\"name\":\"Electronics\"}],\"totalElements\":1,\"totalPages\":1,\"currentPage\":1}", testCategoryId);
             assertEquals(expectedJson, outputMessage.getData());
         } finally {
             server.stop();

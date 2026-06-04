@@ -1,5 +1,9 @@
 package service;
 
+import dto.request.SearchCategoriesRequest;
+import dto.request.SearchProductsRequest;
+import dto.response.PageResponse;
+import entity.Product;
 import entity.ProductCategory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,8 +14,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import repository.ProductCategoryRepository;
 import repository.ProductRepository;
 
+import java.math.BigDecimal;
+import java.sql.SQLException;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,12 +36,12 @@ public class ProductCategoryServiceTest {
 
     @BeforeEach
     public void setUp() {
-        testCategory = new ProductCategory("Test Category");
+        testCategory = new ProductCategory(1, "Test Category");
     }
 
     @Test
     public void shouldCreateCategorySuccessfully() {
-        when(categoryRepository.create("New Category")).thenReturn(1);
+        when(categoryRepository.create(new ProductCategory(0, "New Category"))).thenReturn(1);
 
         int id = categoryService.createCategory("New Category");
 
@@ -47,7 +54,18 @@ public class ProductCategoryServiceTest {
                 () -> categoryService.createCategory("   "));
 
         assertEquals("The category name cannot be empty", exception.getMessage());
-        verify(categoryRepository, never()).create(anyString());
+        verify(categoryRepository, never()).create(any());
+    }
+
+    @Test
+    public void shouldThrowExceptionWhenCreatingDuplicateName() {
+        SQLException sqlException = new SQLException("Duplicate key", "23505");
+        when(categoryRepository.create(new ProductCategory(0, "Duplicate"))).thenThrow(new RuntimeException(sqlException));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> categoryService.createCategory("Duplicate"));
+
+        assertTrue(exception.getMessage().contains("already exists"));
     }
 
     @Test
@@ -57,7 +75,7 @@ public class ProductCategoryServiceTest {
         ProductCategory result = categoryService.getCategory(1);
 
         assertNotNull(result);
-        assertEquals(testCategory.getName().get(), result.getName().get());
+        assertEquals(testCategory.name(), result.name());
     }
 
     @Test
@@ -72,9 +90,8 @@ public class ProductCategoryServiceTest {
 
     @Test
     public void shouldDeleteCategorySuccessfully() {
-        when(categoryRepository.get(1)).thenReturn(testCategory);
-        when(productRepository.hasProductsInCategory(1)).thenReturn(false);
-        when(categoryRepository.delete(1)).thenReturn(testCategory);
+        when(productRepository.searchProducts(any(SearchProductsRequest.class))).thenReturn(new PageResponse<>(List.of(), 0, 0, 1));
+        when(categoryRepository.delete(1)).thenReturn(true);
 
         boolean result = categoryService.deleteCategory(1);
 
@@ -84,13 +101,30 @@ public class ProductCategoryServiceTest {
 
     @Test
     public void shouldThrowExceptionWhenDeletingCategoryWithProducts() {
-        when(categoryRepository.get(1)).thenReturn(testCategory);
-        when(productRepository.hasProductsInCategory(1)).thenReturn(true);
+        Product dummyProduct = new Product(1, "Prod", 10, new BigDecimal("10.0"), 1);
+
+        when(productRepository.searchProducts(any(SearchProductsRequest.class)))
+                .thenReturn(new PageResponse<>(List.of(dummyProduct), 1, 1, 1));
 
         IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> categoryService.deleteCategory(1));
 
         assertEquals("You cannot delete the group: it still contains items", exception.getMessage());
         verify(categoryRepository, never()).delete(anyInt());
+    }
+
+    @Test
+    public void shouldSearchCategoriesSuccessfully() {
+        SearchCategoriesRequest request = new SearchCategoriesRequest(null, null, null);
+        PageResponse<ProductCategory> expectedResponse = new PageResponse<>(List.of(testCategory), 1, 1, 1);
+
+        when(categoryRepository.searchCategories(request)).thenReturn(expectedResponse);
+
+        PageResponse<ProductCategory> result = categoryService.searchCategories(request);
+
+        assertNotNull(result);
+        assertEquals(1, result.totalElements());
+        assertEquals("Test Category", result.items().getFirst().name());
+        verify(categoryRepository, times(1)).searchCategories(request);
     }
 }

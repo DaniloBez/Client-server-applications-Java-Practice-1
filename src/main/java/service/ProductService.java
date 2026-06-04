@@ -1,11 +1,13 @@
 package service;
 
+import dto.request.SearchProductsRequest;
+import dto.response.PageResponse;
 import entity.Product;
 import repository.ProductCategoryRepository;
 import repository.ProductRepository;
 
 import java.math.BigDecimal;
-import java.util.List;
+import java.sql.SQLException;
 
 public class ProductService {
     private final ProductRepository productRepository;
@@ -23,7 +25,14 @@ public class ProductService {
         if (initialStock < 0)
             throw new IllegalArgumentException("The initial quantity cannot be negative");
 
-        return productRepository.create(name, initialStock, price, categoryId);
+        try {
+            return productRepository.create(new Product(0, name, initialStock, price, categoryId));
+        } catch (RuntimeException e) {
+            if (isUniqueConstraintViolation(e)) {
+                throw new IllegalArgumentException("Unable to create a product: the product with name '" + name + "' already exists");
+            }
+            throw e;
+        }
     }
 
     public Product getProduct(int productId) {
@@ -38,38 +47,44 @@ public class ProductService {
         if (newPrice.compareTo(BigDecimal.ZERO) < 0)
             throw new IllegalArgumentException("A price cannot be negative");
 
-        Product product = getProduct(productId);
-        product.setPrice(newPrice);
+        productRepository.setProductPrice(productId, newPrice);
     }
 
     public int getStockQuantity(int productId) {
         Product product = getProduct(productId);
-        return product.getCountInStock().get();
+        return product.countInStock();
     }
 
     public void addStock(int productId, int amount) {
-        Product product = getProduct(productId);
-        product.addStock(amount);
+        if (amount < 0)
+            throw new IllegalArgumentException("The amount cannot be negative");
+
+        productRepository.addStock(productId, amount);
     }
 
     public void deductStock(int productId, int amount) {
-        Product product = getProduct(productId);
+        if (amount < 0)
+            throw new IllegalArgumentException("The amount cannot be negative");
 
-        boolean success = product.deductStock(amount);
+        boolean success = productRepository.deductStock(productId, amount);
 
         if (!success)
             throw new IllegalStateException("There are not enough items in stock to deduct " + amount + " units");
     }
 
     public boolean deleteProduct(int productId) {
-        return productRepository.delete(productId) != null;
+        return productRepository.delete(productId);
     }
 
-    public List<Product> getProductsByCategory(int categoryId) {
-        if (categoryRepository.get(categoryId) == null) {
-            throw new IllegalArgumentException("Unable to get products: the group with ID " + categoryId + " does not exist");
-        }
+    public PageResponse<Product> searchProducts(SearchProductsRequest request) {
+        return productRepository.searchProducts(request);
+    }
 
-        return productRepository.getAllByCategoryId(categoryId);
+    private boolean isUniqueConstraintViolation(RuntimeException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof SQLException sqlException) {
+            return "23505".equals(sqlException.getSQLState());
+        }
+        return false;
     }
 }
