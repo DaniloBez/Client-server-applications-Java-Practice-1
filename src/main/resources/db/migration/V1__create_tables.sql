@@ -9,4 +9,10 @@ CREATE TABLE product (
     count_in_stock INT CHECK ( count_in_stock >= 0 ),
     price DOUBLE PRECISION CHECK ( price > 0 ),
     product_category_id INT REFERENCES product_category(id)
-)
+);
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL
+);
