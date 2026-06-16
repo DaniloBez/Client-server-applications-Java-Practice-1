@@ -57,7 +57,7 @@ public class StoreServerHTTPTest {
             .post("/login")
         .then()
             .statusCode(200)
-            .body("access_token", equalTo("mocked-jwt-token"));
+            .body("accessToken", equalTo("mocked-jwt-token"));
     }
 
     @Test

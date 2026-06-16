@@ -1,6 +1,7 @@
 package server;
 
 import client.IClient;
+import client.StoreClientHTTP;
 import dto.Message;
 import org.junit.jupiter.api.Test;
 
@@ -53,7 +54,9 @@ public class PerformanceAndChaosTest extends BaseIntegrationTest {
 
     @Test
     public void highLoadTest() throws InterruptedException {
-        int clientCount = 500;
+        int tcpUdpClientCount = 300;
+        int httpClientCount = 200;
+        int clientCount = tcpUdpClientCount + httpClientCount;
         int requestsPerClient = 100;
         int totalRequests = clientCount * requestsPerClient;
         int senderCount = 25;
@@ -84,7 +87,7 @@ public class PerformanceAndChaosTest extends BaseIntegrationTest {
         List<IClient> clients = Collections.synchronizedList(new ArrayList<>());
 
         try(ExecutorService executor = Executors.newFixedThreadPool(clientCount)) {
-            for (int i = 1; i <= clientCount; i++) {
+            for (int i = 1; i <= tcpUdpClientCount; i++) {
                 final int clientId = i;
 
                 executor.submit(() -> {
@@ -104,6 +107,35 @@ public class PerformanceAndChaosTest extends BaseIntegrationTest {
                             Thread.sleep(5);
                         }
                     } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+            }
+            
+            for (int i = 1; i <= httpClientCount; i++) {
+                executor.submit(() -> {
+                    try {
+                        StoreClientHTTP httpClient = new StoreClientHTTP("localhost", 8080);
+                        httpClient.login("testuser", "testpass");
+
+                        readyLatch.countDown();
+                        startLatch.await();
+
+                        for (int requestCount = 0; requestCount < requestsPerClient; requestCount++) {
+                            try {
+                                if (httpClient.getProduct(testProductId))
+                                    successfulResponses.incrementAndGet();
+                                else
+                                    errorResponses.incrementAndGet();
+                            } catch (Exception e) {
+                                errorResponses.incrementAndGet();
+                            } finally {
+                                allResponsesLatch.countDown();
+                            }
+
+                            Thread.sleep(5);
+                        }
+                    } catch (Exception e) {
                         Thread.currentThread().interrupt();
                     }
                 });
@@ -206,6 +238,61 @@ public class PerformanceAndChaosTest extends BaseIntegrationTest {
 
             org.junit.jupiter.api.Assertions.assertTrue(serverSurvived, "The server froze after the connections were lost!");
             assertEquals(totalClients - clientsToKill, successfulSecondWave.get());
+        }
+    }
+
+    @Test
+    public void testConcurrentDeleteRaceCondition() throws InterruptedException {
+        int threadCount = 10;
+
+        Server server = initServer(5, 2, 2, 2);
+        server.start();
+        Thread.sleep(200);
+
+        client.StoreClientHTTP setupClient = new client.StoreClientHTTP("localhost", 8080);
+        setupClient.login("testuser", "testpass");
+        int newProductId = setupClient.createProduct("TargetToKill", 100, new java.math.BigDecimal("99.99"), testCategoryId);
+
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threadCount);
+
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger failCount = new AtomicInteger(0);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            for (int i = 0; i < threadCount; i++) {
+                executor.submit(() -> {
+                    try {
+                        client.StoreClientHTTP httpClient = new client.StoreClientHTTP("localhost", 8080);
+                        httpClient.login("testuser", "testpass");
+
+                        startLatch.await();
+
+                        boolean deleted = httpClient.deleteProduct(newProductId);
+                        if (deleted)
+                            successCount.incrementAndGet();
+                        else
+                            failCount.incrementAndGet();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            startLatch.countDown();
+
+            doneLatch.await(10, TimeUnit.SECONDS);
+
+            System.out.println("Concurrent Delete Test Results:");
+            System.out.println("Successful deletes: " + successCount.get());
+            System.out.println("Failed deletes: " + failCount.get());
+
+            assertEquals(1, successCount.get());
+            assertEquals(threadCount - 1, failCount.get());
+        } finally {
+            server.stop();
         }
     }
 }

@@ -1,3 +1,4 @@
+import com.auth0.jwt.algorithms.Algorithm;
 import decryptor.IDecryptor;
 import decryptor.MessageDecryptor;
 import encryptor.MessageEncryptor;
@@ -118,13 +119,24 @@ public class ServerMain {
 
         ProductCategoryRepository categoryRepository = new ProductCategoryRepository(dbConnectionPool);
         ProductRepository productRepository = new ProductRepository(dbConnectionPool);
+        repository.UserRepository userRepository = new repository.UserRepository(dbConnectionPool);
 
         ProductCategoryService categoryService = new ProductCategoryService(categoryRepository, productRepository);
         ProductService productService = new ProductService(productRepository, categoryRepository);
+        
+        Algorithm jwtAlgorithm = Algorithm.HMAC256(
+                System.getenv("JWT_SECRET") != null
+                        ? System.getenv("JWT_SECRET")
+                        : "default-secret"
+        );
+        service.UserService userService = new service.UserService(userRepository, jwtAlgorithm);
 
         IDecryptor serverDecryptor = new MessageDecryptor();
         MessageEncryptor serverEncryptor = new MessageEncryptor();
         IProcessor serverProcessor = new Processor(productService, categoryService);
+
+        int tcpUdpPort = 10000;
+        int httpPort = 8080;
 
         return new Server(
                 5,
@@ -134,7 +146,10 @@ public class ServerMain {
                 3,
                 serverProcessor,
                 4,
-                10000
+                tcpUdpPort,
+                httpPort,
+                userService,
+                productService
         );
     }
 }

@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Executors;
 
 @Slf4j
 public class StoreServerHTTP {
@@ -41,6 +42,7 @@ public class StoreServerHTTP {
         try {
             log.info("Starting HTTP server on port {}", port);
             httpServer = HttpServer.create(new InetSocketAddress(port), 1000);
+            httpServer.setExecutor(Executors.newFixedThreadPool(50));
             httpServer.start();
             init();
         } catch (IOException e) {
