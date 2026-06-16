@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import processor.IProcessor;
 import processor.ProcessorNode;
 import sender.SenderNode;
+import service.ProductService;
+import service.UserService;
 import utils.ServerSignals;
 
 
@@ -31,6 +33,7 @@ public class Server {
     private final ConnectionManager connectionManager = new ConnectionManager();
 
     private final int port;
+    private final int httpPort;
 
     private AtomicBoolean isTCPServerRun = new AtomicBoolean(false);
     private StoreServerTCP tcpServer;
@@ -41,6 +44,10 @@ public class Server {
     private final IProcessor processor;
     private final IDecryptor decryptor;
     private final IEncryptor encryptor;
+    private final UserService userService;
+    private final ProductService productService;
+
+    private StoreServerHTTP httpServer;
 
     private final int senderCount;
     private final int decryptorCount;
@@ -55,9 +62,12 @@ public class Server {
             int encryptorCount,
             IProcessor processor,
             int processorCount,
-            int port
+            int port,
+            int httpPort,
+            UserService userService,
+            ProductService productService
     ) {
-        validate(senderCount, decryptorCount, encryptorCount, processorCount, port);
+        validate(senderCount, decryptorCount, encryptorCount, processorCount, port, httpPort);
 
         this.senderCount = senderCount;
         this.decryptor = decryptor;
@@ -66,8 +76,11 @@ public class Server {
         this.encryptorCount = encryptorCount;
         this.processor = processor;
         this.processorCount = processorCount;
+        this.userService = userService;
+        this.productService = productService;
 
         this.port = port;
+        this.httpPort = httpPort;
 
         this.executorService = Executors.newFixedThreadPool(2 + senderCount + decryptorCount + encryptorCount + processorCount);
     }
@@ -77,7 +90,8 @@ public class Server {
             int decryptorCount,
             int encryptorCount,
             int processorCount,
-            int port
+            int port,
+            int httpPort
     ) throws IllegalArgumentException {
         if (senderCount <= 0)
             throw new IllegalArgumentException("Sender count must be greater than 0");
@@ -86,13 +100,19 @@ public class Server {
         if (processorCount <= 0)
             throw new IllegalArgumentException("Processor count must be greater than 0");
         if (encryptorCount <= 0)
-            throw new IllegalArgumentException("TCP port must be greater than 0");
+            throw new IllegalArgumentException("Encryptor count must be greater than 0");
 
         if (port <= 1000)
             throw new IllegalArgumentException("TCP port must be greater than 1000");
+        if (httpPort <= 1000)
+            throw new IllegalArgumentException("HTTP port must be greater than 1000");
     }
 
     public void start() {
+        logger.info("Starting HTTP Server on port {}", httpPort);
+        this.httpServer = new StoreServerHTTP(httpPort, userService, productService);
+        this.httpServer.start();
+
         logger.info("Starting TCP Server");
         this.isTCPServerRun = new AtomicBoolean(true);
         this.tcpServer = new StoreServerTCP(port, connectionManager, isTCPServerRun, rawInputQueue);
@@ -131,6 +151,10 @@ public class Server {
 
     public void stop() {
         logger.info("A shutdown signal has been received. Initiating a graceful shutdown...");
+
+        logger.info("Shutting down HTTP Server");
+        if (httpServer != null)
+            httpServer.stop();
 
         logger.info("Shutting down TCP Server");
         isTCPServerRun.set(false);

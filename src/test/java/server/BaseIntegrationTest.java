@@ -38,6 +38,7 @@ public abstract class BaseIntegrationTest {
 
     private ProductCategoryService categoryService;
     private ProductService productService;
+    private service.UserService userService;
 
     @BeforeEach
     void setUp() {
@@ -53,9 +54,15 @@ public abstract class BaseIntegrationTest {
 
         ProductCategoryRepository categoryRepository = new ProductCategoryRepository(pool);
         ProductRepository productRepository = new ProductRepository(pool);
+        repository.UserRepository userRepository = new repository.UserRepository(pool);
 
         categoryService = new ProductCategoryService(categoryRepository, productRepository);
         productService = new ProductService(productRepository, categoryRepository);
+        userService = new service.UserService(userRepository, com.auth0.jwt.algorithms.Algorithm.HMAC256("secret"));
+
+        try {
+            userService.register("testuser", "testpass");
+        } catch (IllegalArgumentException ignored) {}
 
         testCategoryId = categoryRepository.create(new ProductCategory(0, "Electronics"));
         testProductId = productRepository.create(new Product(0, "Product", 10, new BigDecimal(10), testCategoryId));
@@ -74,7 +81,19 @@ public abstract class BaseIntegrationTest {
 
         IProcessor serverProcessor = new Processor(productService, categoryService);
 
-        return new Server(senderCount, serverDecryptor, decryptorCount, serverEncryptor, encryptorCount, serverProcessor, processorCount, 10000);
+        return new Server(
+                senderCount, 
+                serverDecryptor, 
+                decryptorCount, 
+                serverEncryptor, 
+                encryptorCount, 
+                serverProcessor, 
+                processorCount, 
+                10000, 
+                8080, 
+                userService, 
+                productService
+        );
     }
 
     protected IClient getClient(int id, Consumer<Message> consumer) {

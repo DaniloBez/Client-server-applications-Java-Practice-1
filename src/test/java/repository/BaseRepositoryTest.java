@@ -17,6 +17,7 @@ public abstract class BaseRepositoryTest {
     protected DBConnectionPool pool;
     protected ProductCategoryRepository productCategoryRepository;
     protected ProductRepository productRepository;
+    protected UserRepository userRepository;
 
     @BeforeEach
     void setUp() {
@@ -31,6 +32,7 @@ public abstract class BaseRepositoryTest {
         pool = new DBConnectionPool(5, postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
         productCategoryRepository = new ProductCategoryRepository(pool);
         productRepository = new ProductRepository(pool);
+        userRepository = new UserRepository(pool);
     }
 
     @AfterEach
