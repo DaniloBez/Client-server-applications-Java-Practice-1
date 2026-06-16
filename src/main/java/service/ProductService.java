@@ -35,6 +35,26 @@ public class ProductService {
         }
     }
 
+    public void updateProduct(int productId, String name, int stock, BigDecimal price, int categoryId) {
+        if (categoryRepository.get(categoryId) == null)
+            throw new IllegalArgumentException("Unable to update product: the group with ID " + categoryId + " does not exist");
+
+        if (stock < 0)
+            throw new IllegalArgumentException("The quantity cannot be negative");
+
+        if (price.compareTo(BigDecimal.ZERO) < 0)
+            throw new IllegalArgumentException("A price cannot be negative");
+
+        try {
+            productRepository.update(productId, new Product(productId, name, stock, price, categoryId));
+        } catch (RuntimeException e) {
+            if (isUniqueConstraintViolation(e)) {
+                throw new IllegalArgumentException("Unable to update product: the product with name '" + name + "' already exists");
+            }
+            throw e;
+        }
+    }
+
     public Product getProduct(int productId) {
         Product product = productRepository.get(productId);
         if (product == null)
